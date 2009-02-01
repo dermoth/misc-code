@@ -1,6 +1,6 @@
 #! /usr/bin/perl
 #
-# check_dns_sync  -  Check serial synchronization between multiple DNS servers
+# check_dns_serial  -  Check serial synchronization between multiple DNS servers
 #
 # Copyright (C) 2006-2007 Thomas Guyot-Sionnest <tguyot@gmail.com>
 #
