@@ -1,7 +1,7 @@
 #! /usr/bin/perl
 #
 # check_bigip_pool
-#   - Check the number of available servers in a BigIP Virtual Server
+#   - Check the number of available servers in a BigIP Pool
 #
 # Designed for F5 BigIP 4.5 and LTM 9.x.
 #
