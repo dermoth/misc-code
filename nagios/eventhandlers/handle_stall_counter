@@ -1,0 +1,58 @@
+#!/usr/bin/perl
+#
+# handle_stall_counter - Nagios event handler to restart performance logs on
+# Windows servers. Aditionally, this script sets the normal check interval on
+# HARD OK and WARNING states to reset automatically the service.
+#
+# Requires NC_Net on the Windows server, NC_Net's version of check_nt on the
+# local server.
+#
+# Author: Thomas Guyot-Sionnest <tguyot@gmail.com>
+#
+# This script is released in the public domain.
+#
+
+use strict;
+use warnings;
+
+# Fork to let Nagios keep on working...
+if (fork != 0) {
+	# Nobody cares if fork failed...
+  warn("Daemonizing... Thanks for calling me.");
+  exit(0);
+}
+
+die("Usage: $0 <hostname> <hostaddress> <state> <statetype> <stateattempt> <password>") unless (@ARGV == 6);
+
+my $commandfile = '/var/spool/nagios/nagios.cmd';
+my $hostname = $ARGV[0];
+my $hostaddress = $ARGV[1];
+my $state = $ARGV[2];
+my $statetype = $ARGV[3];
+my $stateattempt = $ARGV[4];
+my $password = $ARGV[5];
+
+# If state becomes HARD WARNING, change the check interval to something
+# smaller so the check eventually gets back to OK.
+if ($state eq 'WARNING' && $statetype eq 'HARD') {
+	open(CMD, ">>$commandfile");
+	printf(CMD "[%lu] CHANGE_NORMAL_SVC_CHECK_INTERVAL;%s;Performance Log;600\n", time, $hostname);
+	close(CMD);
+	die("regularly scheduled check interval of $hostname set to 10 minutes");
+}
+
+# If state becomes HARD OK, revert the check interval to yearly check in
+# order to avoid flooding Nagios logs.
+if ($state eq 'OK' && $statetype eq 'HARD') {
+	open(CMD, ">>$commandfile");
+	printf(CMD "[%lu] CHANGE_NORMAL_SVC_CHECK_INTERVAL;%s;Performance Log;31471200\n", time, $hostname);
+	close(CMD);
+	die("regularly scheduled check interval of $hostname reverted to default of 1 year");
+}
+
+# Else only care for the first soft state
+die("Ignoring non-1st-SOFT-WARNING state") unless ($state eq 'WARNING' && $statetype eq 'SOFT' && $stateattempt eq '1');
+
+# Timeout handled by check_nt
+exec "/usr/libexec/nagios/check_nt -H $hostaddress -s $password -v RUNSCRIPT -l start_counters.bat";
+
