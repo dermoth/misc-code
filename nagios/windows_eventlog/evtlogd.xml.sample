@@ -1,0 +1,52 @@
+<!-- Evtlogd config file -->
+<Config>
+	<HostGrp name="LAMP">
+		<!-- All hosts named WEB<NN> or DB<NN>,
+		case-insensitive -->
+		<Host>WEB??</Host>
+		<Host>DB??</Host>
+	</HostGrp>
+	<NagiosSvc name="EventLog Testing">
+		<!-- Nagios service name and alert level (one of OK, WARNING, CRITICAL
+		or UNKNOWN) - REQUIRED -->
+		<Description>EventLog Test</Description>
+		<Alert>UNKNOWN</Alert>
+	</NagiosSvc>
+	<EvtItem name="LAMP test rule">
+		<Service>EventLog Testing</Service>
+		<!-- Everything else is optionnal, although it wouldn't be sane to just
+		leave it empty! -->
+		<Hosts>LAMP</Hosts>
+		<!-- Frequency settings -->
+		<Freq>
+			<!-- Requires Number events within Time seconds to send an alert, per host -->
+			<Number>2</Number>
+			<Time>20</Time>
+			<!-- Don't resend notification if last one was sent within Rate seconds, per host -->
+			<Rate>60</Rate>
+		</Freq>
+		<Include>
+			<!-- Type Warning or Error ("Audit Success" and "Audit Failure" are treated
+			as "Information" and "Error" respectively. Unknown types are always
+			"Information" -->
+			<Type>Warning</Type>
+			<Type>Error</Type>
+			<!-- Either one of these sources (exact match) -->
+			<Source>Site Server Content Deployment</Source>
+			<Source>Perflib</Source>
+			<Source>webapp</Source>
+			<!-- Either one of these IDs -->
+			<Id>15368</Id>
+			<Id>1023</Id>
+			<Id>1038</Id>
+			<!-- This is the same thing as ommiting it... -->
+			<Message>*</Message>
+			<!-- And this rule is totally useless because of the previous one -->
+			<Message>*cannot load*</Message>
+		</Include>
+		<Exclude>
+			<!-- Excludes takes predecense over includes -->
+			<Message>Unable to deserialize data*</Message>
+		</Exclude>
+	</EvtItem>
+</Config>

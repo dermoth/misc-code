@@ -1,0 +1,506 @@
+#!/usr/bin/perl
+#
+# evtlogd - evtsys log daemon
+#           v.1.1
+#           Copyright(c) 2008-2009 Thomas Guyot-Sionnest <tguyot@gmail.com>
+#
+# This is a Perl daemon that receives evtsys logs trough syslog-ng and sends
+# Nagios alerts as needed.
+# The syslog-ng.conf line for writing to the daemon should look like this:
+#   destination daemon { program("/usr/sbin/evtlogd" flush_lines(0) template("$DATE\t$HOST\t$PRI\t$MSG\n")); };
+#
+# To test the config without actually starting the daemon, run the following
+# command line (assuming evtlogd is in your PATH):
+#
+#   evtlogd configtest
+#
+# Returns a non-0 status on errors and prints a detailed message to STDOUT.
+#
+
+use XML::Simple qw(:strict);
+use POSIX qw(WNOHANG O_APPEND O_WRONLY);
+use strict;
+use warnings;
+use constant LOG_PRIMASK => 0x07;
+use constant LOG_ERR     => 3;
+use constant LOG_WARNING => 4;
+use constant LOG_NOTICE  => 5;
+use constant OK          => 0;
+use constant WARNING     => 1;
+use constant CRITICAL    => 2;
+use constant UNKNOWN     => 3;
+
+use vars qw(%TYPE %TYPETEX %ERRORS %STATUS_TEXT %HOSTS @LOOKUP $CONF_FILE $NAGCMD $NAGLOG $PID_FILE $DBGLOG $DBGTIME);
+
+## Config file
+$CONF_FILE = '/etc/evtlogd.xml';
+## This is the Nagios command pipe file path
+$NAGCMD = '/usr/local/nagios/var/rw/nagios.cmd';
+## If The pipe doesn't exists (i.e. Nagios down), writes will be appended to this file
+$NAGLOG = '/usr/local/nagios/var/rw/evtlogd_cmd.log';
+## Our PID file
+$PID_FILE = '/var/run/evtlogd.pid';
+## Uncomment the following line to write a debug log
+#$DBGLOG = '/tmp/evtlogd.log';
+
+# Some useful hashes...
+%TYPE = (
+	'Error'       => LOG_ERR,
+	'Warning'     => LOG_WARNING,
+	'Information' => LOG_NOTICE,
+);
+%TYPETEX = reverse (%TYPE);
+
+%ERRORS = (
+	'OK'        => OK,
+	'WARNING'   => WARNING,
+	'CRITICAL'  => CRITICAL,
+	'UNKNOWN'   => UNKNOWN,
+);
+%STATUS_TEXT = reverse %ERRORS;
+
+# Test config only
+if (defined ($ARGV[0]) && $ARGV[0] eq 'configtest') {
+	# $DBGTIME isn't initialised yet - we don't need logging anyways
+	undef ($DBGLOG);
+	eval { init_conf(); };
+	if ($@) {
+		print "Config error: $@";
+		exit 1;
+	} else {
+		print "Config OK\n";
+		exit 0;
+	}
+}
+
+if ($DBGLOG) {
+	# Enable high-resolution dates only if the appropriate modules can be loaded
+	eval { require Time::TAI64; require Time::HiRes; };
+	if ($@) {
+		$DBGTIME = sub { return scalar(localtime); };
+	} else {
+		$DBGTIME = sub { return &Time::TAI64::tai64nlocal(&Time::TAI64::unixtai64n(&Time::HiRes::time())); };
+	}
+
+	open (LOG, ">>$DBGLOG");
+	syswrite (LOG, &$DBGTIME . " [$$] Evtlogd starting up...\n");
+}
+
+# Our pid file
+if (open (PIDFILE, ">$PID_FILE")) {
+	syswrite (PIDFILE, $$);
+	close (PIDFILE);
+} else {
+	 syswrite (LOG, &$DBGTIME . " [$$] Couldn't write pid file: $!\n") if ($DBGLOG);
+}
+
+# Perform initial configuration
+init_conf();
+
+# Handle some signals
+$SIG{'HUP'} = 'trap_sig';
+$SIG{'INT'} = 'trap_sig';
+$SIG{'TERM'} = 'trap_sig';
+$SIG{'QUIT'} = 'trap_sig';
+$SIG{'USR1'} = 'IGNORE';
+$SIG{'USR2'} = 'IGNORE';
+
+# Reap zombies
+$SIG{'CHLD'} = sub {while (waitpid (-1, WNOHANG) > 0) {}};
+
+while (<STDIN>) {
+	# Got a message; parse it...
+	chomp;
+	syswrite (LOG, &$DBGTIME . " [$$] New log line: '$_'\n") if ($DBGLOG);
+	my @log = split (/\t/);
+	if (@log <= 3) {
+		syswrite (LOG, &$DBGTIME . " [$$] Malformed log line: not enough TAB-separated elements\n") if ($DBGLOG);
+		next;
+	}
+	my ($date, $host, $pri) = @log;
+	if ($pri !~ /^\d{2,3}/) {
+		syswrite (LOG, &$DBGTIME . " [$$] Malformed log line: priority isn't a 2-3 digit integer\n") if ($DBGLOG);
+		next;
+	}
+	$pri &= LOG_PRIMASK;
+	my $msg = join ("\t", splice (@log, 3));
+	if (!$msg) {
+		syswrite (LOG, &$DBGTIME . " [$$] Malformed log line: message part is empty\n") if ($DBGLOG);
+		next;
+	}
+	@log = split (/: /, $msg);
+	if (@log <= 2) {
+		syswrite (LOG, &$DBGTIME . " [$$] Malformed log line: not enough colon-separated elements\n") if ($DBGLOG);
+		next;
+	}
+	my ($source, $evid) = @log;
+	$msg = join (": ", splice (@log, 2));
+	if (!$msg) {
+		syswrite (LOG, &$DBGTIME . " [$$] Malformed log line: eventlog message part is empty\n") if ($DBGLOG);
+		next;
+	}
+	if (!defined ($TYPETEX{$pri})) {
+		syswrite (LOG, &$DBGTIME . " [$$] Malformed log line: unknown priority: $pri\n") if ($DBGLOG);
+		next;
+	}
+	# Strip the message
+	$msg =~ s/^\s*(.*?)\s*$/$1/;
+
+	syswrite (LOG, &$DBGTIME . " [$$] EventLog Entry:\n  Date: $date\n  Host: $host\n  Type: $TYPETEX{$pri}\n  Source: $source\n  Event ID: $evid\n  Msg:\n$msg\nEND\n")
+		if ($DBGLOG);
+
+	# Loop over all event items
+	LOOKUP_LOOP: for (my $i=0; defined ($LOOKUP[$i]); $i++) {
+		syswrite (LOG, &$DBGTIME . " [$$] Checking event against $LOOKUP[$i]{name} ($i)\n") if ($DBGLOG);
+
+		# Check the host first
+		if (defined ($LOOKUP[$i]{hosts})) {
+			my $hostgrp = $LOOKUP[$i]{hosts};
+			syswrite (LOG, &$DBGTIME . " [$$] Testing if host '$host' match hosts defined in '$hostgrp'\n") if ($DBGLOG);
+			$_ = $host;
+			next LOOKUP_LOOP unless (&{$HOSTS{$hostgrp}});
+			syswrite (LOG, &$DBGTIME . " [$$] Host matched hosts in '$hostgrp'\n") if ($DBGLOG);
+		}
+
+		# Apply all filtering rules...
+		foreach my $item (keys (%{$LOOKUP[$i]{Include}})) {
+			if ($item eq 'Type') {
+				$_ = $TYPETEX{$pri};
+			}	elsif ($item eq 'Id') {
+				$_ = $evid;
+			} elsif ($item eq 'Source') {
+				$_ = $source;
+			} elsif ($item eq 'Message') {
+				$_ = $msg
+			}
+			syswrite (LOG, &$DBGTIME . " [$$] Testing if inclusive $item match '$_'\n") if ($DBGLOG);
+			next LOOKUP_LOOP unless (&{$LOOKUP[$i]{Include}->{$item}});
+			syswrite (LOG, &$DBGTIME . " [$$] Matched $item\n") if ($DBGLOG);
+		}
+		foreach my $item (keys (%{$LOOKUP[$i]{Exclude}})) {
+			if ($item eq 'Type') {
+				$_ = $TYPETEX{$pri};
+			} elsif ($item eq 'Id') {
+				$_ = $evid;
+			} elsif ($item eq 'Source') {
+				$_ = $source;
+			} elsif ($item eq 'Message') {
+				$_ = $msg
+			}
+			syswrite (LOG, &$DBGTIME . " [$$] Testing if exclusive $item doesn't match '$_'\n") if ($DBGLOG);
+			next LOOKUP_LOOP if (&{$LOOKUP[$i]{Exclude}->{$item}});
+			syswrite (LOG, &$DBGTIME . " [$$] Didn't matched $item\n") if ($DBGLOG);
+		}
+
+		# We Got a Winner!(tm). Do some magic to determine if we should alert
+		syswrite (LOG, &$DBGTIME . " [$$] Processing frequency for $LOOKUP[$i]{name} ($i)\n") if ($DBGLOG);
+
+		# But first check that we've seen that host before
+		if (!defined($LOOKUP[$i]{host}{$host})) {
+			@{$LOOKUP[$i]{host}{$host}{freqarray}} = @{$LOOKUP[$i]{freqarray}};
+			$LOOKUP[$i]{host}{$host}{nlast} = 0;
+		}
+		if (process_freq ($LOOKUP[$i]{freqtime}, $LOOKUP[$i]{host}{$host}{freqarray})) {
+			if ((my $rate = $LOOKUP[$i]{nrate}) > 0) {
+				my $now = time;
+				syswrite (LOG, &$DBGTIME . " [$$] Verifying rate limit for $LOOKUP[$i]{name} ($i)\n") if ($DBGLOG);
+				next LOOKUP_LOOP if (($now - $LOOKUP[$i]{host}{$host}{nlast}) < $rate);
+				$LOOKUP[$i]{host}{$host}{nlast} = $now;
+			}
+			syswrite (LOG, &$DBGTIME . " [$$] Sending alert for $LOOKUP[$i]{name} ($i)\n") if ($DBGLOG);
+			send_alert ($host, $LOOKUP[$i]{service}, $ERRORS{$LOOKUP[$i]{alert}}, "Event $evid ($TYPETEX{$pri}) from $source: $msg", $LOOKUP[$i]{substhost});
+		}
+	}
+}
+
+# Perform initial configuration
+sub init_conf {
+	# Parse the XML config
+	syswrite (LOG, &$DBGTIME . " [$$] Reading config file $CONF_FILE (a failure will cause Evtlogd to die without further notice)...\n")
+		if ($DBGLOG);
+	my $config = XMLin($CONF_FILE, 'KeyAttr' => ['name'], ForceArray => ['HostGrp', 'NagiosSvc', 'EvtItem', 'Host', 'Type', 'Source', 'Id', 'Message']);
+
+	#use Data::Dumper;
+	#syswrite (LOG, "Config:\n") if ($DBGLOG);
+	#syswrite (LOG, Dumper($config)) if ($DBGLOG);
+
+	# Sanity checks on the config...
+	# All hostgroups must contain at least one host match
+	for (keys %{$config->{HostGrp}}) {
+		if (!defined ($config->{HostGrp}->{$_}->{Host})) {
+			syswrite (LOG, &$DBGTIME . " [$$] Hosts group $_ doesn't contain any host match\n") if ($DBGLOG);
+			do_exit("Hosts group $_ doesn't contain any host match");
+		}
+	}
+
+	for (keys %{$config->{NagiosSvc}}) {
+		# Nagios service name and alert must be defined
+		if (!defined ($config->{NagiosSvc}->{$_}->{Description}) ||
+		    !defined ($config->{NagiosSvc}->{$_}->{Alert}) ||
+		    ref ($config->{NagiosSvc}->{$_}->{Description}) ||
+		    ref ($config->{NagiosSvc}->{$_}->{Alert})) {
+			syswrite (LOG, &$DBGTIME . " [$$] Nagios service '$_' not properly defined\n") if ($DBGLOG);
+			do_exit("Nagios service '$_' not properly defined");
+		}
+		# Nagios alert level must be valid
+		if (!defined ($ERRORS{$config->{NagiosSvc}->{$_}->{Alert}})) {
+			syswrite (LOG, &$DBGTIME . " [$$] Nagios service '$_' uses invalid state: '$config->{NagiosSvc}->{$_}->{Alert}'\n")
+				if ($DBGLOG);
+			do_exit("Nagios service '$_' uses invalid state: '$config->{NagiosSvc}->{$_}->{Alert}'");
+		}
+	}
+
+	for (keys %{$config->{EvtItem}}) {
+		# Event items must define a valid host group if they define one
+		if (my $substhost = $config->{EvtItem}->{$_}->{SubstHost}) {
+			if (ref ($config->{EvtItem}->{$_}->{SubstHost})) {
+				syswrite (LOG, &$DBGTIME . " [$$] Event item '$_' defines more than one substition host\n") if ($DBGLOG);
+				do_exit("Event item '$_' defines more than one substition host");
+			}
+		}
+		if (my $hostgrp = $config->{EvtItem}->{$_}->{Hosts}) {
+			if (ref ($config->{EvtItem}->{$_}->{Hosts})) {
+				syswrite (LOG, &$DBGTIME . " [$$] Event item '$_' defines more than one Hosts group\n") if ($DBGLOG);
+				do_exit("Event item '$_' defines more than one Hosts group");
+			}
+			if (!defined ($config->{HostGrp}->{$hostgrp})) {
+				syswrite (LOG, &$DBGTIME . " [$$] Event item '$_' uses an undefined Hosts group: '$hostgrp'\n") if ($DBGLOG);
+				do_exit("Event item '$_' uses an undefined Hosts group: '$hostgrp'");
+			}
+		}
+
+		# Nagios service must be present
+		if (!defined ($config->{EvtItem}->{$_}->{Service}) ||
+		    ref ($config->{EvtItem}->{$_}->{Service})) {
+			syswrite (LOG, &$DBGTIME . " [$$] Nagios service for event item '$_' not properly defined\n") if ($DBGLOG);
+			do_exit("Nagios service for event item '$_' not properly defined");
+		}
+		# Nagios service must exists
+		if (!defined ($config->{NagiosSvc}->{$config->{EvtItem}->{$_}->{Service}})) {
+			syswrite (LOG, &$DBGTIME . " [$$] Nagios service '$config->{EvtItem}->{$_}->{Service}' (event item '$_') does not exist\n")
+				if ($DBGLOG);
+			do_exit("Nagios service '$config->{EvtItem}->{$_}->{Service}' (event item '$_') does not exist");
+		}
+
+		# All frequency items must be present, even if not used.
+		if (!defined ($config->{EvtItem}->{$_}->{Freq}) ||
+		    ref ($config->{EvtItem}->{$_}->{Freq}) ne 'HASH' ||
+		    !defined ($config->{EvtItem}->{$_}->{Freq}->{Number}) ||
+		    ref ($config->{EvtItem}->{$_}->{Freq}->{Number}) ||
+		    !defined ($config->{EvtItem}->{$_}->{Freq}->{Time}) ||
+		    ref ($config->{EvtItem}->{$_}->{Freq}->{Time}) ||
+		    !defined ($config->{EvtItem}->{$_}->{Freq}->{Rate}) ||
+		    ref ($config->{EvtItem}->{$_}->{Freq}->{Rate})) {
+			syswrite (LOG, &$DBGTIME . " [$$] Missing or misconfigured frequency items for event item '$_'\n") if ($DBGLOG);
+			do_exit("Missing or misconfigured frequency items for event item '$_'");
+		}
+		# This is probably not required, but better be on the safe side...
+		if ($config->{EvtItem}->{$_}->{Freq}->{Number} < 1) {
+			syswrite (LOG, &$DBGTIME . " [$$] Frequency number must be greater or equal to 1\n") if ($DBGLOG);
+			do_exit("Frequency number must be greater or equal to 1");
+		}
+
+		foreach my $item (('Include', 'Exclude')) {
+			next unless (defined ($config->{EvtItem}->{$_}->{$item}));
+
+			# Check if {in,ex}clude lists aren't defined twice
+			if (ref ($config->{EvtItem}->{$_}->{$item}) ne 'HASH') {
+				syswrite (LOG, &$DBGTIME . " [$$] $item list for event item '$_' is misconfigured\n") if ($DBGLOG);
+				do_exit("$item list for event item '$_' is misconfigured");
+			}
+			# Included items must not be references themselves
+			foreach my $type (keys %{$config->{EvtItem}->{$_}->{$item}}) {
+				foreach my $arrayitem (@{$config->{EvtItem}->{$_}->{$item}->{$type}}) {
+					if (ref ($arrayitem)) {
+						syswrite (LOG, &$DBGTIME . " [$$] $item list for event item '$_' contains invalid items\n") if ($DBGLOG);
+						do_exit("$item list for event item '$_' contains invalid items");
+					}
+				}
+			}
+			# Each defined event types must be valid
+			if (defined($config->{EvtItem}->{$_}->{$item}->{Type})) {
+				foreach my $type (@{$config->{EvtItem}->{$_}->{$item}->{Type}}) {
+ 					if (!defined ($TYPE{$type})) {
+						syswrite (LOG, &$DBGTIME . " [$$] Event item '$_' uses an undefined $item event type: '$type'\n") if ($DBGLOG);
+						do_exit("Event item '$_' uses an undefined $item event type: '$type'");
+					}
+				}
+			}
+		}
+	}
+	syswrite (LOG, &$DBGTIME . " [$$] Successfully parsed config\n") if ($DBGLOG);
+
+	# Keep some stats...
+	my ($hostnum, $litnum, $renum);
+	my $evtnum = 0;
+
+	# First generate a host lookup hash with pre-compiled regular expressions
+	foreach my $hostgrp (keys %{$config->{HostGrp}}) {
+		my $expr = join ('||', map { 'm#' . glob2pat (@{$config->{HostGrp}->{$hostgrp}->{Host}}[$_]) . '#io' } 0 .. $#{$config->{HostGrp}->{$hostgrp}->{Host}});
+		$HOSTS{$hostgrp} = eval "sub { $expr }";
+		if ($@) {
+			syswrite (LOG, &$DBGTIME . " [$$] Couldn't build regexes for hosts group '$hostgrp'\n") if ($DBGLOG);
+			do_exit("Couldn't build regexes for hosts group '$hostgrp'");
+		}
+		$hostnum++;
+		$renum += @{$config->{HostGrp}->{$hostgrp}->{Host}};
+	}
+
+	# Then generate a lookup table for the rest
+	foreach my $evtitem (keys %{$config->{EvtItem}}) {
+		# Some basic config
+		$LOOKUP[$evtnum]{name} = $evtitem;
+		$LOOKUP[$evtnum]{service} = $config->{NagiosSvc}->{$config->{EvtItem}->{$evtitem}->{Service}}->{Description};
+		$LOOKUP[$evtnum]{alert} = $config->{NagiosSvc}->{$config->{EvtItem}->{$evtitem}->{Service}}->{Alert};
+
+		# Substitusion host
+		$LOOKUP[$evtnum]{substhost} = $config->{EvtItem}->{$evtitem}->{SubstHost}
+			if (defined ($config->{EvtItem}->{$evtitem}->{SubstHost}));
+
+		# No host == any
+		$LOOKUP[$evtnum]{hosts} = $config->{EvtItem}->{$evtitem}->{Hosts}
+			if (defined ($config->{EvtItem}->{$evtitem}->{Hosts}));
+
+		# This is the occurrence counter default values...
+		$LOOKUP[$evtnum]{freqtime} = $config->{EvtItem}->{$evtitem}->{Freq}->{Time};
+		$LOOKUP[$evtnum]{freqarray} = [ map { 0 } 1 .. $config->{EvtItem}->{$evtitem}->{Freq}->{Number} ];
+
+		# Notifications Rate control default values...
+		$LOOKUP[$evtnum]{nrate} = $config->{EvtItem}->{$evtitem}->{Freq}->{Rate};
+		$LOOKUP[$evtnum]{nlast} = 0;
+
+		# ... and host hash for storing per-host values
+		$LOOKUP[$evtnum]{host} = {};
+
+		# Generate pre-compiled REs and lookups for include and exclude items
+		foreach my $itemtype (('Include', 'Exclude')) {
+			next unless (defined ($config->{EvtItem}->{$evtitem}->{$itemtype}));
+			foreach my $item (keys (%{$config->{EvtItem}->{$evtitem}->{$itemtype}})) {
+				my $expr;
+				if ($item eq 'Message' || $item eq 'Source') {
+					$expr = join ('||', map { 'm#' . glob2pat (@{$config->{EvtItem}->{$evtitem}->{$itemtype}->{$item}}[$_]) . '#io' } 0 .. $#{$config->{EvtItem}->{$evtitem}->{$itemtype}->{$item}});
+					$renum += @{$config->{EvtItem}->{$evtitem}->{$itemtype}->{$item}};
+				} else {
+					$expr = join ('||', map { '$_ eq \'' . @{$config->{EvtItem}->{$evtitem}->{$itemtype}->{$item}}[$_] . '\'' } 0 .. $#{$config->{EvtItem}->{$evtitem}->{$itemtype}->{$item}});
+					$litnum += @{$config->{EvtItem}->{$evtitem}->{$itemtype}->{$item}};
+				}
+				$LOOKUP[$evtnum]{$itemtype}->{$item} = eval "sub { $expr }";
+				if ($@) {
+					syswrite (LOG, &$DBGTIME . " [$$] Couldn't build regexes or literal match for event item '$evtitem', $itemtype type '$item'\n") if ($DBGLOG);
+					do_exit("Couldn't build regexes or literal match for event item '$evtitem', $itemtype type '$item'");
+				}
+			}
+		}
+		$evtnum++;
+	}
+	syswrite (LOG, &$DBGTIME . " [$$] Successfully built regexes and literal matches:\n  Host groups: $hostnum\n  Event items: $evtnum\n  Literal matches: $litnum\n  Pre-compiled regexes: $renum\n")
+		if ($DBGLOG);
+
+	#use Data::Dumper;
+	#syswrite (LOG, "Hosts:\n") if ($DBGLOG);
+	#syswrite (LOG, Dumper(\%HOSTS)) if ($DBGLOG);
+	#syswrite (LOG, "Lookup:\n") if ($DBGLOG);
+	#syswrite (LOG, Dumper(\@LOOKUP)) if ($DBGLOG);
+}
+
+# Process frequency. This means:
+#   1. Shift all element of the frequency array to the right
+#   2. Insert current timestamp in the leftmost position
+#   3. Return true and reset the array if time delta with the leftmost
+#      element <= freqtime
+sub process_freq {
+	my $freqtime = shift;
+	my $arrayref = shift;
+	my $now = time;
+
+	# We use a sortcut here to avoid walking twice the array
+	# NB: Since we use a shortcut the array could be 1 element shorter, but
+	#     it works, so...
+	if ($#{$arrayref} < 1) {
+		# Item set to alert at every message
+		return 1;
+	} elsif (($now - ${$arrayref}[1]) <= $freqtime) {
+		# NB: checked the 2nd position since we haven't shifted the array yet!
+		# We're up for an alert; reset the array...
+		@$arrayref = [ map { 0 } 0 .. $#{$arrayref} ];
+		# And notify
+		return 1;
+	} else {
+		# Shift to the left...
+		shift(@$arrayref);
+		# And set last element
+		${$arrayref}[$#{$arrayref}+1] = $now;
+	}
+	# Don't send notifications yet
+	return 0;
+}
+
+# Send a nagios alert. Parameters are: <host name>, <Service name>, <alert type> and <event message>.
+sub send_alert {
+	my $host = shift;
+	my $service = shift;
+	my $alert = shift;
+	my $msg = shift;
+	my $substhost = shift;
+
+	# Writing to Nagios command pipe can block; fork first.
+	syswrite (LOG, &$DBGTIME . " [$$] Forking to send Nagios alert: $host $service $STATUS_TEXT{$alert}: $msg\n") if ($DBGLOG);
+	return if (fork != 0);
+
+	# From now on the code is only executed by the new process. First close the LOG file:
+	close (LOG) if ($DBGLOG);
+
+	if ($substhost) {
+		# Use the substition host defined
+		$host = $substhost;
+	} else {
+		# Since we can't guarantee to match the case in Nagios, try using the IP Address instead
+		if ($host !~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/) {
+			if (my $tmphost = ((gethostbyname ($host))[4])[0]) {
+				$host = join ('.', unpack ('C4', $tmphost));
+			}
+		}
+	}
+
+	# Open the command pipe only if it *already exists*, or append to the backup log file.
+	sysopen (NAGCMD, $NAGCMD, O_APPEND|O_WRONLY) or open (NAGCMD, ">>$NAGLOG") or exit;
+	my $now = time;
+	syswrite (NAGCMD, "[$now] PROCESS_SERVICE_CHECK_RESULT;$host;$service;$alert;$STATUS_TEXT{$alert}: $msg\n");
+	close (NAGCMD);
+	exit;
+}
+
+# Convert simple patterns into perlre matches (taken verbatim from the
+# Perl Cookbook, O'Reilly, Chapter 6.9, August 1998).
+sub glob2pat {
+	my $globstr = shift;
+	my %patmap = (
+	              '*' => '.*',
+	              '?' => '.',
+	              '[' => '[',
+	              ']' => ']',
+	);
+	$globstr =~ s{(.)} { $patmap{$1} || "\Q$1" }ge;
+	return '^' . $globstr . '$';
+}
+
+# Pretty Output Wrapper(tm)
+sub trap_sig {
+	do_exit("Caught SIG@_. Terminating...");
+}
+
+# Exit
+sub do_exit {
+	my $msg = shift;
+
+	syswrite (LOG, &$DBGTIME . " [$$] Evtlogd shutting down...\n") if ($DBGLOG);
+	syswrite (LOG, &$DBGTIME . " [$$] Failed to unlink pid file: $!\n")
+		if (!unlink ($PID_FILE) && $DBGLOG);
+
+	close (LOG) if ($DBGLOG);
+
+	# Must not use exit during config parsing
+	$! = 1;
+	die ("$msg\n");
+}
+

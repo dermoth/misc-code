@@ -1,0 +1,182 @@
+#! /usr/bin/perl -w
+#
+# check_winsvc  -  Use NC_Net/check_nt to check all Automatic Windows services
+# Version: 1.01
+#
+# First use ENUMSERVICE to get a list of services set for Automatic startup,
+# then check them with SERVICESTATE to see if any service is down.
+#
+# This script requires the NC_Net version of check_nt, and of course NC_Net on
+# the remote machine. The path to check_nt is hardcoded in the code.
+#
+# Note: Services names containing an ampersand (&) can't be sent as-it, as the
+# ampersand is the character used by check_nt to split arguments on the wire.
+# There's an hardcoded hash that can match these service names to their
+# respective registry key name. If one or more service names returned by
+# ENUMSERVICE contains an ampersand and matches the hash keys, they will be
+# substitued by the respective key value. If any service don't match anything
+# in the hash, it will either return:
+# - Unknown if all other services are OK
+# - Completely ignore these services if any other service is non-OK
+#
+#
+# Copyright (C) 2006 Thomas Guyot-Sionnest <tguyot@gmail.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+#
+
+use strict;
+use Getopt::Long;
+use vars qw($opt_H $opt_s $opt_p $opt_t $opt_E $opt_d);
+use vars qw($PROGNAME);
+use lib "/usr/local/nagios/libexec";
+use utils qw($TIMEOUT %ERRORS);
+
+$PROGNAME = "check_winsvc";
+$ENV{'PATH'}='';
+$ENV{'BASH_ENV'}='';
+$ENV{'ENV'}='';
+
+# Please set the check_nt patch here if different
+my $check_nt_path = "/usr/local/nagios/libexec/check_nt";
+
+# This hash is used for services names substitutions. Read the comments in
+# the top of this script for more info.
+my %svc_substitute = (
+		'Galaxy Media & Library Manager (ControlSet001)' => 'GxMLM(ControlSet001)',
+		);
+
+Getopt::Long::Configure('bundling');
+GetOptions (
+	"H=s" => \$opt_H, "hostname=s" => \$opt_H,
+	"s=s" => \$opt_s, "secret=s" => \$opt_s,
+	"p=s" => \$opt_p, "port=s" => \$opt_p,
+	"t=s" => \$opt_t, "timeout=s" => \$opt_t,
+	"d=s" => \$opt_d, "data=s" => \$opt_d,
+	"E=s" => \$opt_E, "exclude=s" => \$opt_E );
+
+unless (defined($opt_H)) {
+  print "Usage: $PROGNAME -H host [ -s secret ] [ -p port ] [ -t timeout ] [-d data ] [ -E exclude_list ]\n
+Options:
+-H --hostname=HOST
+  Hostame passed to check_nt
+-s --secret=STRING
+  Secret passed to check_nt
+-p --port=INTEGER
+  Port passed to check_nt
+-t --timeout=INTEGER
+  This value equals to twice the timeout value passed to check_nt
+-d --data=STRING
+  Option passed to -d parameter of check_nt. You'll usually want \"SHOWFAIL\"
+-E --exclude=STRING
+  Comma separated list just as check_nt -l argument. Used to exclude services.\n\n";
+  exit $ERRORS{'UNKNOWN'};
+}
+
+# Parse arguments
+my $basecmd = "$check_nt_path -H $opt_H ";
+
+$basecmd .= "-s $opt_s " if (defined $opt_s);
+$basecmd .= "-p $opt_p " if (defined $opt_p);
+
+my $timeout;
+if (defined $opt_t) {
+  # We divide timeout by 2 as we have to use it twice.
+  $timeout = ($opt_t /2);
+} else {
+  $timeout = $TIMEOUT;
+}
+$basecmd .= "-t $timeout ";
+
+$basecmd .= "-d $opt_d " if (defined $opt_d);
+
+my @exclude_list;
+if (defined($opt_E)) {
+  @exclude_list = split(/,/, $opt_E);
+}
+
+# Just in case of problems, let's not hang Nagios
+$SIG{'ALRM'} = sub {
+        print "CRITICAL: $check_nt_path timed out\n";
+        exit $ERRORS{"CRITICAL"};
+};
+alarm($timeout);
+
+# Get the services list in automatic mode
+my $cmd = $basecmd . "-v ENUMSERVICE -l Automatic";
+my $svc_list = `$cmd`;
+if ($? != 0) {
+  print "CRITICAL: Could not retrieve information from check_nt. Host down?\n";
+  exit $ERRORS{'CRITICAL'};
+}
+chomp $svc_list;
+
+#Turn off alarm
+alarm(0);
+
+my @svc_tmp_list = split(/;  /, $svc_list);
+undef $svc_list;
+
+# Filter the list. Remove exclusions, substitute ampersands.
+my @svc_ampersand;  # This is for service names we can't substitute, if any
+
+foreach my $svc (@svc_tmp_list) {
+  for (@exclude_list) {
+    if ($_ eq $svc) {
+      undef $svc;
+      last;
+    }
+  }
+  next unless (defined($svc));
+
+  # If we got here we'll now append $svc to $svc_list for the next NC_Net check
+  if ($svc =~ /&/) {
+    if (defined($svc_substitute{$svc})) {
+      $svc_list .= "$svc_substitute{$svc},";
+    } else {  # Didn't found a substition, we can't check it so we log it.
+      push (@svc_ampersand, $svc);
+    }
+  } else {  # Service doesn't contain an ampersand
+    $svc_list .= "$svc,";
+  }
+}
+chop($svc_list);
+
+# Now run the real check...
+# Just in case of problems, let's not hang Nagios
+alarm($timeout);
+
+$cmd = $basecmd . "-v SERVICESTATE -l '$svc_list'";
+my $res = `$cmd`;
+my $ret = $? >> 8;
+
+#Turn off alarm
+alarm(0);
+
+if ($ret == 0 && @svc_ampersand != 0) {
+  # The check went fine but we have unchecked services, warn about them
+  my $status;
+  for (@svc_ampersand) {
+    $status .= "UNKNOWN: $_ ";
+  }
+  chop $status;
+  print "$status\n";
+  exit $ERRORS{'UNKNOWN'};
+}
+
+# In all other cases return what check_nt returned to us
+print $res;
+exit $ret;
+

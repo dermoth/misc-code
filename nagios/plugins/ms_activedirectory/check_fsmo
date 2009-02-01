@@ -1,0 +1,215 @@
+#! /usr/bin/perl -w
+#
+# check_fsmo -  Monitor for changes to FSMO roles using LDAP
+#
+# This script compare FSMO roles owners with a supplied list.
+#
+# Requires OpenLDAP and Net::LDAP.
+#
+#
+# Copyright (C) 2006 Thomas Guyot-Sionnest <tguyot@gmail.com>
+#
+# Contains code from:
+## From the book "Managing Enterprise Active Directory Services"
+## ISBN: 0-672-32125-4
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+#
+
+use strict;
+use Getopt::Long;
+use Net::LDAP;
+use vars qw($opt_H $opt_U $opt_P $opt_E $opt_R $opt_S $opt_I $opt_D $opt_t);
+use vars qw($PROGNAME);
+use lib "/usr/local/nagios/libexec";
+use utils qw($TIMEOUT %ERRORS);
+
+$PROGNAME = "check_fsmo";
+$ENV{'PATH'}='';
+$ENV{'BASH_ENV'}='';
+$ENV{'ENV'}='';
+
+sub report_err {
+  my $message = shift;
+  $message = "LDAP request timed out" if ($message eq 'ALRM');
+  print "CRITICAL: $message\n";
+  exit $ERRORS{'CRITICAL'};
+}
+
+Getopt::Long::Configure('bundling');
+GetOptions (
+	"H=s" => \$opt_H, "hostname=s" => \$opt_H,
+	"U=s" => \$opt_U, "user=s" => \$opt_U,
+	"P=s" => \$opt_P, "pass=s" => \$opt_P,
+	"E=s" => \$opt_E, "pdc=s" => \$opt_E,
+	"R=s" => \$opt_R, "rid=s" => \$opt_R,
+	"S=s" => \$opt_S, "schema=s" => \$opt_S,
+	"I=s" => \$opt_I, "infra=s" => \$opt_I,
+	"D=s" => \$opt_D, "dnm=s" => \$opt_D,
+	"t=s" => \$opt_t, "timeout=i" => \$opt_t );
+
+unless (defined($opt_H) && defined($opt_U) && defined($opt_P) && defined($opt_E) && defined($opt_R) && defined($opt_S) && defined($opt_I) && defined($opt_D)) {
+  print "Usage: $PROGNAME -H host -U username -P password -E pdc_emu -R rid_mast -S schema_mast -I infre_mast -D dn_mast [ -t timeout ]\n
+Options:
+-H --hostname=HOST
+  Hostame for LDAP check
+-U --user=STRING
+  Username in the form 'user\@domain.com'
+-P --pass=STRING
+  Password for the above user
+-E --pdc=STRING
+  Expected PDC Emulator
+-R --rid=STRING
+  Expected RID Master
+-S --schema=STRING
+  Expected Schema Master
+-I --infra=STRING
+  Expected Infrastructure Master
+-D --dnm=STRING
+  Expected Domain Naming Master
+-t --timeout=INTEGER
+  Timeout for LDAP request. Default to $TIMEOUT.\n";
+  exit $ERRORS{'UNKNOWN'};
+}
+
+# Parse arguments
+my $hostname = $opt_H;
+my $username = $opt_U;
+my $password = $opt_P;
+my $ex_pdc = lc($opt_E);
+my $ex_rid = lc($opt_R);
+my $ex_schema = lc($opt_S);
+my $ex_infra = lc($opt_I);
+my $ex_dnm = lc($opt_D);
+
+my $timeout = $TIMEOUT;
+$timeout = int($opt_t) if (defined($opt_t));
+
+# Just in case of problems, let's not hang Nagios
+$SIG{'ALRM'} = \&report_err;
+alarm($timeout);
+
+my $ldap = Net::LDAP->new($hostname) or report_err("Can't connect with LDAP: $!");
+
+my $mesg = $ldap->bind($username, password => $password);
+
+$mesg->code &&  report_err("L:" . __LINE__ . ": " . $mesg->error);
+
+# Get the schemaNamingContext value
+$mesg = $ldap->search(
+                        base   => '',
+                        filter => '(objectclass=*)',
+                        scope  => 'base',
+                        attrs  => ['rootDomainNamingContext',
+                                  'defaultNamingContext']
+                      );
+
+$mesg->code &&  report_err($mesg->error);
+$mesg->code &&  report_err("L:" . __LINE__ . ": " . $mesg->error);
+
+my $forestDN = $mesg->entry(0)->get_value('rootDomainNamingContext');
+my $domainDN = $mesg->entry(0)->get_value('defaultNamingContext');
+
+# PDC Emulator
+$mesg = $ldap->search(
+                        base   => $domainDN,
+                        filter => '(objectclass=*)',
+                        scope  => 'base',
+                        attrs  => ['fsmoroleowner']
+                      );
+
+$mesg->code &&  report_err("L:" . __LINE__ . ": " . $mesg->error);
+
+my $pdc = (split(/,/, $mesg->entry(0)->get_value('fsmoroleowner')))[1];
+$pdc = lc($pdc);
+$pdc =~ s/cn=//;
+
+# RID Master
+$mesg = $ldap->search(
+                        base   => "cn=RID Manager\$,cn=system,$domainDN",
+                        filter => '(objectclass=*)',
+                        scope  => 'base',
+                        attrs  => ['fsmoroleowner']
+                      );
+
+$mesg->code &&  report_err("L:" . __LINE__ . ": " . $mesg->error);
+
+my $rid = (split(/,/, $mesg->entry(0)->get_value('fsmoroleowner')))[1];
+$rid = lc($rid);
+$rid =~ s/cn=//;
+
+# Schema Master
+$mesg = $ldap->search(
+                        base   => "cn=Schema,cn=Configuration,$forestDN",
+                        filter => '(objectclass=*)',
+                        scope  => 'base',
+                        attrs  => ['fsmoroleowner']
+                      );
+
+$mesg->code &&  report_err("L:" . __LINE__ . ": " . $mesg->error);
+
+my $schema = (split(/,/, $mesg->entry(0)->get_value('fsmoroleowner')))[1];
+$schema = lc($schema);
+$schema =~ s/cn=//;
+
+# Infrastructure Master
+$mesg = $ldap->search(
+                        base   => "cn=Infrastructure,$domainDN",
+                        filter => '(objectclass=*)',
+                        scope  => 'base',
+                        attrs  => ['fsmoroleowner']
+                      );
+
+$mesg->code &&  report_err("L:" . __LINE__ . ": " . $mesg->error);
+
+my $infra = (split(/,/, $mesg->entry(0)->get_value('fsmoroleowner')))[1];
+$infra = lc($infra);
+$infra =~ s/cn=//;
+
+# Domain Naming Master
+$mesg = $ldap->search(
+                        base   => "cn=Partitions,cn=Configuration,$forestDN",
+                        filter => '(objectclass=*)',
+                        scope  => 'base',
+                        attrs  => ['fsmoroleowner']
+                      );
+
+$mesg->code &&  report_err("L:" . __LINE__ . ": " . $mesg->error);
+
+my $dnm = (split(/,/, $mesg->entry(0)->get_value('fsmoroleowner')))[1];
+$dnm = lc($dnm);
+$dnm =~ s/cn=//;
+
+$ldap->unbind;
+
+#Turn off alarm
+alarm(0);
+
+my $mismatches;
+
+$mismatches .= "PDC Emulator $ex_pdc:$pdc," if ($ex_pdc ne $pdc);
+$mismatches .= "RID Master $ex_rid:$rid," if ($ex_rid ne $rid);
+$mismatches .= "Schema Master $ex_schema:$schema," if ($ex_schema ne $schema);
+$mismatches .= "Infrastructure Master $ex_infra:$infra," if ($ex_infra ne $infra);
+$mismatches .= "Domain Naming Master $ex_dnm:$dnm," if ($ex_dnm ne $dnm);
+
+if (defined($mismatches)) {
+  chop $mismatches;
+  report_err("FSMO Roles changed: $mismatches");
+}
+
+print "OK: No changes in FSMO Roles\n";
+exit $ERRORS{'OK'};
+

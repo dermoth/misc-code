@@ -1,0 +1,57 @@
+#!/usr/bin/perl -w
+#
+# check_http_ntlm - HTTP check for web service requiring NTLM authentication
+#
+# Author: Mark Steele <mark@control-alt-del.org>
+#
+
+use LWP::UserAgent;
+use HTTP::Request::Common;
+use Getopt::Long;
+use Time::HiRes qw(time);
+use strict;
+
+my $time = time;
+
+my ($host,$path,$user,$domain,$password);
+my ($port,$timeout) = (80,5);
+
+GetOptions(
+		"host=s" => \$host, 
+		"path=s" => \$path,
+		"user=s" => \$user,
+		"domain=s" => \$domain,
+		"password=s" => \$password,
+		"timeout=i" => \$timeout, 
+		"port=i" => \$port) 
+	|| exit_with("Couldn't parse options\n",3);
+
+if (!$host || !$path || !$user || !$domain || !$password || !$port || !$timeout) {
+  my_exit_with("Missing options\n",3);
+}
+
+my $url = "http://$host:$port/$path";
+
+my $ua = new LWP::UserAgent(keep_alive=>1);
+$ua->timeout($timeout);
+
+$ua->credentials("$host:$port",'', "$domain\\$user","$password");
+
+my $request = GET $url;
+my $response = $ua->request($request);
+
+if ($response->is_success) {
+  my_exit_with('OK|'.sprintf("time=%.06fs\n",time-$time),0);
+} else {
+  if ($response->status_line =~ /\(connect: timeout\)/) {
+    my_exit_with("ERRROR: Connection timeout\n",2);
+  } else {
+    my_exit_with("ERROR: ".$response->status_line.sprintf("|time=%.06fs\n",time-$time),2);
+  }
+}
+
+sub my_exit_with {
+  print shift;
+  exit shift;  
+}
+

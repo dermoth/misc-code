@@ -1,0 +1,337 @@
+#! /usr/bin/perl
+#
+# check_netacuity
+#   - Checks a Windows NetAcuity server using the embbedded SNMP server
+#
+# Tested with Digital Envoy NetAcuity server v.0414
+#
+# Copyright (C) 2008 Thomas Guyot-Sionnest <tguyot@gmail.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+#
+
+# Enabling these break ePN compilation; please uncomment only for
+# development/debugging purposes.
+#use strict;
+#use warnings;
+use vars qw($PROGNAME $VERSION $PORT $COMMUNITY $snmpcmd $snmpwalkcmd %oid);
+use Class::Date;
+use Nagios::Plugin;
+
+$PROGNAME = 'check_netacuity';
+$VERSION = '1.01';
+$PORT = 10161; # Defauld NetAcuity port
+$COMMUNITY = 'naPublic'; # Default NetAcuity READ community
+$snmpcmd = '/usr/bin/snmpget';
+$snmpwalkcmd = '/usr/bin/snmpwalk';
+
+# This hash is pretty much what will be checked and how. There's two kind of
+# checks: simple oid ones (The oid should privide the date for the item) and
+# checks working on a snmp table (should provide the base oid plus the
+# complement for the name and value. On the latter one, the 'name' attribute
+# is only used internally.
+# For any of these checks, either a 'last' or 'expiration' attribute can be
+# given and they define the maximum time since last update and the minimum
+# time before expiration respectively. These values are halved for the WARNING
+# status.
+%oid = (
+  'NetAcuityServerExpires' => {
+    'name' => 'Server',
+    'oid' => '.1.3.6.1.4.1.18640.1.1.7.0',
+    'expiration' => 60*24*60*60, # 60 days ahead
+  },
+  'NetAcuityMUSLastSuccess' => {
+    'name' => 'NetAcuity',
+    'oid' => '.1.3.6.1.4.1.18640.1.2.3.0',
+    'last' => 14*24*60*60, # No more than 14 days
+  },
+  'NetAcuityDBExpires' => {
+    'name' => 'DB Expiration',
+    'baseoid' => '.1.3.6.1.4.1.18640.1.3.1',
+    'nameoid' => '.2',
+    'valueoid' => '.7',
+    'expiration' => 60*24*60*60, # 60 days ahead
+  },
+);
+
+my $np = Nagios::Plugin->new(
+  usage => "Usage: %s -H <hostname> [ -C <Community> ] [ -P <Port> ]",
+  version => $VERSION,
+  plugin  => $PROGNAME,
+  shortname => uc($PROGNAME),
+  blurb => 'Checks a Windows NetAcuity server using the embbedded SNMP server',
+  timeout => 10,
+);
+
+$np->add_arg(
+  spec => 'hostname|H=s',
+  help => '-H, --hostname=<hostname>',
+  required => 1,
+);
+
+$np->add_arg(
+  spec => 'community|C=s',
+  help => "-C, --community=<Community>\n"
+    . "   This is the NetAcuity READ Community string (default: $COMMUNITY).",
+  default => $COMMUNITY,
+  required => 0,
+);
+
+$np->add_arg(
+  spec => 'port|P=i',
+  help => "-P, --port=<Port>\n"
+    . "   This is the port for the NetAcuity SNMP server (default: $PORT).",
+  default => $PORT,
+  required => 0,
+
+);
+
+$np->getopts;
+
+# Assign, then check args
+my $hostname = $np->opts->hostname;
+my $community = $np->opts->community;
+my $port = $np->opts->port;
+
+$np->nagios_exit('UNKNOWN', 'Hostname contains invalid characters.')
+  if ($hostname =~ /\`|\~|\!|\$|\%|\^|\&|\*|\||\'|\"|\<|\>|\?|\,|\(|\)|\=/);
+$np->nagios_exit('UNKNOWN', 'Community contains invalid characters.')
+  if ($community =~ /\`|\~|\!|\$|\%|\^|\&|\*|\||\'|\"|\<|\>|\?|\,|\(|\)|\=/);
+$np->nagios_exit('UNKNOWN', "Invalid port: $port")
+  if ($port < 0 || $port > 65535);
+
+# Just in case of problems, let's not hang Nagios
+alarm $np->opts->timeout;
+
+my $state = OK;
+my $str = '';
+
+# Iterate over all %oid keys
+foreach my $key (keys(%oid)) {
+  if (defined($oid{$key}{'oid'})) {
+    # Oid is provided, fetch it
+    my $cmd = "$snmpcmd -v2c -c $community -m '' -On -Oe $hostname:$port " . $oid{$key}{'oid'};
+    if ($np->opts->verbose) {
+      print STDERR "Getting '$key' trough SNMP\n";
+      print STDERR "Running command: \"$cmd\"\n" if ($np->opts->verbose >= 2);
+    } else {
+      $cmd .= ' 2>/dev/null';
+    }
+    my $response = `$cmd`;
+    if ($? != 0) {
+      $state = $np->max_state_alt($state, UNKNOWN);
+      $str .= "Could not get data for " . $oid{$key}{'name'} . " over SNMP. ";
+      print STDERR "Failed getting '$key' trough SNMP\n" if ($np->opts->verbose);
+      next;
+    }
+    chomp $response;
+
+    print STDERR "Got answer '$response'\n" if ($np->opts->verbose >= 2);
+
+    # Now parse the date and get the current one.
+    $response =~ s/\"//g;
+    my @values = split(/ /, $response);
+    @values = splice(@values, 3);
+    my $retdate = strdate(@values);
+    $np->nagios_exit('UNKNOWN', "Can't parse date for '" . $oid{$key}{'name'} . "'")
+      if (!defined($retdate));
+    print STDERR "Parsed date for " . $oid{$key}{'name'} . ": $retdate\n" if ($np->opts->verbose);
+
+    # Compare the dates
+    $state = $np->max_state_alt($state, datediff($oid{$key}, \$str, $retdate));
+
+  } elsif (defined($oid{$key}{'baseoid'})) {
+    # Walk a serie of OIDS and check each name/value found
+    my $nameoid = $oid{$key}{'baseoid'} . $oid{$key}{'nameoid'};
+    my $valueoid = $oid{$key}{'baseoid'} . $oid{$key}{'valueoid'};
+
+    # First get the DB names and keep their indexes
+    my $cmd = "$snmpwalkcmd -v2c -c $community -m '' -On -Oe $hostname:$port " . $nameoid;
+    print STDERR "Walking '$nameoid' for '$key'\n" if ($np->opts->verbose);
+    print STDERR "Running command: \"$cmd\"\n" if ($np->opts->verbose >= 2);
+    if (!open (SNMPWALK, "$cmd|")) {
+      $state = $np->max_state_alt($state, UNKNOWN);
+      $str .= "Could not walk oid for " . $oid{$key}{'name'} . " using SNMP. ";
+      print STDERR "Failed getting '$key' using SNMP\n" if ($np->opts->verbose);
+      next;
+    }
+    my %db;
+    while (<SNMPWALK>) {
+      print STDERR "COMMAND OUTPUT: $_" if ($np->opts->verbose >= 3);
+      s/\"//g;
+      chomp;
+      my @values = split(/ /);
+      $np->nagios_exit('UNKNOWN', "Can't parse snmpwalk data\n")
+        if (@values < 4);
+      my $curroid = shift(@values);
+      $curroid =~ s/$nameoid\.//;
+      @values = splice(@values, 2);
+
+      my $name = join(' ', @values);
+      print STDERR "Adding database '$name' for index '$curroid'\n" if ($np->opts->verbose >= 2);
+      $db{$curroid} = { 'name' => $name };
+    }
+    close (SNMPWALK);
+    if ($? != 0) {
+      $state = $np->max_state_alt($state, UNKNOWN);
+      $str .= "Could not get data for " . $oid{$key}{'name'} . " over SNMP. ";
+      print STDERR "Failed getting '$key' trough SNMP\n" if ($np->opts->verbose);
+      next;
+    }
+
+    # Now get the expiration times and do the magic
+    $cmd = "$snmpwalkcmd -v2c -c $community -m '' -On -Oe $hostname:$port " . $valueoid;
+    print STDERR "Walking '$valueoid' for '$key'\n" if ($np->opts->verbose);
+    print STDERR "Running command: \"$cmd\"\n" if ($np->opts->verbose >= 2);
+    if (!open (SNMPWALK, "$cmd|")) {
+      $state = $np->max_state_alt($state, UNKNOWN);
+      $str .= "Could not walk oid for " . $oid{$key}{'name'} . " using SNMP. ";
+      print STDERR "Failed getting '$key' using SNMP\n" if ($np->opts->verbose);
+      next;
+    }
+    my $retdate;
+    while (<SNMPWALK>) {
+      print STDERR "COMMAND OUTPUT: $_" if ($np->opts->verbose >= 3);
+      s/\"//g;
+      chomp;
+      my @values = split(/ /);
+      $np->nagios_exit('UNKNOWN', "Can't parse snmpwalk data\n")
+        if (@values < 4);
+      my $curroid = shift(@values);
+      $curroid =~ s/$valueoid\.//;
+      @values = splice(@values, 2);
+
+      $retdate = strdate(@values);
+      $np->nagios_exit('UNKNOWN', "Can't parse date for '" . $db{$curroid}{'name'} . "' (" . $oid{$key}{'name'} . ")")
+        if (!defined($retdate));
+      print STDERR "Parsed date for " . $oid{$key}{'name'} . " index '$curroid': $retdate\n" if ($np->opts->verbose);
+      print STDERR "Adding expiration '$retdate' for index '$curroid'\n" if ($np->opts->verbose >= 2);
+      if (defined($db{$curroid})) {
+        $db{$curroid}{'date'}=$retdate;
+      } else {
+        $np->nagios_exit('UNKNOWN', "Index mismatch for '" . $oid{$key}{'name'} . "' index '$curroid'");
+      }
+    }
+    close (SNMPWALK);
+    if ($? != 0) {
+      $state = $np->max_state_alt($state, UNKNOWN);
+      $str .= "Could not get data for " . $oid{$key}{'name'} . " over SNMP. ";
+      print STDERR "Failed getting '$key' trough SNMP\n" if ($np->opts->verbose);
+      next;
+    }
+
+    foreach my $dbkey (keys %db) {
+      $db{$dbkey}{'expiration'} = $oid{$key}{'expiration'} if (defined($oid{$key}{'expiration'}));
+      $db{$dbkey}{'last'} = $oid{$key}{'last'} if (defined($oid{$key}{'last'}));
+      $state = $np->max_state_alt($state, datediff($db{$dbkey}, \$str, $retdate, $np->opts->verbose));
+    }
+      
+  } else {
+    # shouldn't happen
+    $state = $np->max_state_alt($state, UNKNOWN);
+    $str .= "Nothing to be done for " . $oid{$key}{'name'} . ". ";
+  }
+}
+
+#Turn off alarm
+alarm(0);
+
+$str = 'All checks successful' unless ($str);
+
+$np->nagios_exit($state, $str);
+
+# This function takes the following arguments in order:
+#    month, day, year, time
+# and return a date object.
+sub strdate {
+  my ($month, $day, $year, $time) = @_;
+  return undef if(!defined($time));
+  my ($hour, $min) = split(/:/, $time);
+  return undef if(!defined($month) || !defined($day) || !defined($year) || !defined($hour) || !defined($min));
+  $month = monthint($month);
+  return undef if(!defined($month));
+  my $date = Class::Date->new([$year, $month, $day, $hour, $min, '0']);
+  return $date;
+}
+
+sub monthint {
+  my $mname = shift;
+  my @marray = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec');
+  for (my $i = 0; $i < 12; $i++) {
+    return ++$i if ($mname eq $marray[$i]);
+  }
+  return undef;
+}
+
+# This function takes a reference to a hash, a reference to a string and
+# a date to check diff against plus a verbosity flag.
+# It returns the state of the date comparison and update the string passed
+# as a reference.
+sub datediff {
+  my $hashref = shift;
+  my $strref = shift;
+  my $retd = shift;
+  my $debug = shift;
+  my $ret = OK;
+  my $currd = Class::Date->new(time);
+
+  if (defined($hashref->{'expiration'})) {
+    # Check if the item didn't expire yet
+    my $diff = $retd - $currd;
+
+    if ($diff <= 0) {
+      $ret = CRITICAL;
+      $$strref .= $hashref->{'name'} . " expired since " . int(abs($diff->day)) . " days. ";
+      print STDERR "Expiration critical for " . $hashref->{'name'} . ": " . int($diff->day) . " days\n" if ($debug);
+    } elsif ($diff < $hashref->{'expiration'} / 2) {
+      $ret = CRITICAL;
+      $$strref .= $hashref->{'name'} . " will expire in " . int($diff->day) . " days. ";
+      print STDERR "Expiration critical for " . $hashref->{'name'} . ": " . int($diff->day) . " days\n" if ($debug);
+    } elsif ($diff < $hashref->{'expiration'}) {
+      $ret = WARNING;
+      $$strref .= $hashref->{'name'} . " will expire in " . int($diff->day) . " days. ";
+      print STDERR "Expiration warning for " . $hashref->{'name'} . ": " . int($diff->day) . " days\n" if ($debug);
+    } elsif ($debug) {
+      print STDERR "Expiration ok for " . $hashref->{'name'} . ": " . int($diff->day) . " days\n";
+    }
+
+  } elsif (defined($hashref->{'last'})) {
+    my $diff = $currd - $retd;
+
+    if ($diff < 0) {
+      $ret = UNKNOWN;
+      $$strref .= $hashref->{'name'} . " was last updated in the future. ";
+      print STDERR "Last update unknown for " . $hashref->{'name'} . ": " . int($diff->day) . " days\n" if ($debug);
+    } elsif ($diff > $hashref->{'last'}) {
+      $ret = CRITICAL;
+      $$strref .= $hashref->{'name'} . " was last updated " . int($diff->day) . " days ago. ";
+      print STDERR "Last update critical for " . $hashref->{'name'} . ": " . int($diff->day) . " days\n" if ($debug);
+    } elsif ($diff > ($hashref->{'last'} / 2)) {
+      $ret = WARNING;
+      $$strref .= $hashref->{'name'} . " was last updated " . int($diff->day) . " days ago. ";
+      print STDERR "Last update warning for " . $hashref->{'name'} . ": " . int($diff->day) . " days\n" if ($debug);
+    } elsif ($debug) {
+      print STDERR "Last update ok for " . $hashref->{'name'} . ": " . int($diff->day) . " days\n";
+    }
+
+  } else {
+    # Shouldn't happen
+    $ret = UNKNOWN;
+    $$strref .= "Nothing to be done for " . $hashref->{'name'} . ". ";
+  }
+
+  return $ret;
+}
+

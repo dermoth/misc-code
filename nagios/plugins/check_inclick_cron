@@ -1,0 +1,225 @@
+#!/usr/bin/perl -w
+#
+# check_inclick_cron - Check inClick database for cron job status
+#
+# Copyright (C) 2007 Thomas Guyot-Sionnest <tguyot@gmail.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+#
+
+use strict;
+use warnings;
+use vars qw($PROGNAME $VERSION);
+use Nagios::Plugin;
+use DBI;
+
+$PROGNAME = 'check_inclick_cron';
+$VERSION = '0.9.1';
+
+my $np = Nagios::Plugin->new(
+  usage => "Usage: %s -H <host> [ -P <port> ] -u <user>\n"
+    . "       -p <password> -d <dadabase> -j [ <job_name> ]\n"
+    . '       [ -w <warning_delay> ] [ -c <critical_delay> ]',
+  version => $VERSION,
+  plugin  => $PROGNAME,
+  shortname => uc($PROGNAME),
+  blurb => "Check inClick cron jobs status from database. Returns CRITICAL if the last job\n"
+    . "did not run successfully. Can also return WARNING or CRITICAL if last run is\n"
+    . 'older than specified. Return UNKNOWN if cron job status can\'t be specified.',
+  timeout => 30,
+);
+
+$np->add_arg(
+  spec => 'hostname|H=s',
+  help => "-H, --hostname=STRING\n"
+    . '   Database hostname to connect to.',
+  required => 1,
+);
+
+$np->add_arg(
+  spec => 'port|P=i',
+  help => "-P, --port=INTEGER\n"
+    . '   Database port (default: 3306).',
+  default => 3306,
+  required => 0,
+);
+
+$np->add_arg(
+  spec => 'user|u=s',
+  help => "-u, --user=STRING\n"
+    . '   Database user to connect with.',
+  required => 1,
+);
+
+$np->add_arg(
+  spec => 'password|p=s',
+  help => "-p, --password=STRING\n"
+    . '   Database password to connect with.',
+  required => 1,
+);
+
+$np->add_arg(
+  spec => 'database|d=s',
+  help => "-d, --database=STRING\n"
+    . '   Database name to use.',
+  required => 1,
+);
+
+$np->add_arg(
+  spec => 'job|j:s',
+  help => "-j, --job=STRING\n"
+    . '   Job name to check. Without argument, print the list of jobs available.',
+  required => 1,
+);
+
+$np->add_arg(
+  spec => 'warning|w=i',
+  help => "-w, --warning=MINUTES\n"
+    . '   Number of minutes since the last job ran before sending a warning alert.',
+  required => 0,
+);
+
+$np->add_arg(
+  spec => 'critical|c=s',
+  help => "-c, --critical=MINUTES\n"
+    . '   Number of minutes since the last job ran before sending a warning alert.',
+  required => 0,
+);
+
+$np->getopts;
+
+# Assign, then check args
+my $host = $np->opts->hostname;
+my $port = $np->opts->port;
+my $user = $np->opts->user;
+my $pass = $np->opts->password;
+my $dbname = $np->opts->database;
+my $job = $np->opts->job;
+
+my $verbose = $np->opts->verbose;
+
+# Set thresholds in minutes
+$np->set_thresholds(
+  warning => ($np->opts->warning ? $np->opts->warning * 60 : $np->opts->warning),
+  critical => ($np->opts->critical ? $np->opts->critical * 60 : $np->opts->critical),
+);
+
+alarm $np->opts->timeout;
+
+my $dbh = DBI->connect("DBI:mysql:dbname=$dbname;host=$host;port=$port", $user, $pass, {PrintError => 0})
+  or $np->nagios_exit('UNKNOWN', 'Connection failed: ' . $DBI::errstr);
+
+if (!$job) {
+  # List the available jobs
+  my $sth = $dbh->prepare('SELECT code, manual_flag, last_execution_end, last_execution_successful_flag FROM inclick_cron_status');
+  $sth->execute() or $np->nagios_exit('UNKNOWN', 'Query failed: ' . $DBI::errstr);;
+
+  my @row;
+
+format STDOUT_TOP =
+Job name                              Manual Last exec end       Successful
+---------------------------------------------------------------------------
+.
+
+format STDOUT =
+@<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< @<<<<< @<<<<<<<<<<<<<<<<<< @<<<<<<<<<<
+$row[0],       ($row[1] ? 'Yes' :  'No'), $row[2], ($row[3] ? 'Yes' :  'No')
+.
+
+  while (@row = $sth->fetchrow_array) {
+    write STDOUT;
+  }
+  exit;
+}
+
+my $sth = $dbh->prepare('SELECT UNIX_TIMESTAMP(last_execution_end), last_execution_successful_flag FROM inclick_cron_status WHERE code IN (?)');
+$sth->execute($job) or $np->nagios_exit('UNKNOWN', 'Query failed: ' . $DBI::errstr);
+
+my @row = $sth->fetchrow_array or $np->nagios_exit('UNKNOWN', 'Query returned an empty set');
+
+$sth->finish;
+$dbh->disconnect;
+alarm 0;
+
+# Get last run time
+my $lastrun = time() - $row[0];
+
+my $state = OK;
+my $status = '';
+
+if (!$row[1]) {
+  $state = CRITICAL;
+  $status = 'Last job run was unsuccessful. ';
+}
+
+$np->add_perfdata(
+  label => "lastrundelta",
+  value => $lastrun,
+  uom => 'sec',
+  threshold => $np->threshold,
+);
+
+$state = $np->max_state_alt($state, $np->check_threshold($lastrun));
+
+$status .= 'Last job ran ' . convtime($lastrun) . ' ago. ';
+chop $status;
+
+$np->nagios_exit($state, $status);
+
+sub convtime {
+  my $duration = shift;
+  my $message;
+
+  my $years = int($duration/60/60/24/365);
+  my $days = int($duration/60/60/24) - ($years * 365);
+  my $hours = int($duration/60/60) - ($years * 365 * 24) - ($days * 24);
+  my $min = int($duration/60) - ($years * 365 * 24 * 60) - ($days * 24 * 60) - ($hours * 60);
+  my $sec = $duration  - ($years * 365 * 24 * 60 * 60) - ($days * 24 * 60 * 60) - ($hours * 60 * 60) - ($min * 60);
+
+  if ($years > 0) {
+    $message = "$years year" . ($years != 1 ? 's' : '');
+    if (($days + $hours + $min) > 0) {
+      $message .= ', ';
+    } elsif ($sec > 0) {
+      $message .= ' and ';
+    }
+  }
+  if ($days > 0) {
+    $message .= "$days day" . ($days != 1 ? 's' : '');
+    if (($hours + $min) > 0) {
+      $message .= ', ';
+    } elsif ($sec > 0) {
+      $message .= ' and ';
+    }
+  }
+  if ($hours > 0) {
+    $message .= "$hours hour" . ($hours != 1 ? 's' : '');
+    if ($min > 0) {
+      $message .= ', ';
+    } elsif ($sec > 0) {
+      $message .= ' and ';
+    }
+  }
+  if ($min > 0) {
+    $message .= "$min minute" . ($min != 1 ? 's' : '');
+    $message .= ' and ' if ($sec > 0);
+  }
+  if ($sec > 0 || ($years + $days + $hours + $min) == 0) {
+    $message .= "$sec second" . ($sec > 1 ? 's' : '');
+  }
+
+  return($message);
+}
+

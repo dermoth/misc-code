@@ -1,0 +1,95 @@
+#!/usr/bin/perl
+#
+# check_lookup  -  Simple Nagios pluging to check forward and reverse lookup
+#                  using standard resolving functions.
+#
+# Copyright (c) 2008 Thomas Guyot-Sionnest <tguyot@gmail.com>
+#
+# usage: check_lookup <hostname> <ip_address>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+#
+
+use strict;
+use warnings;
+use Socket qw(AF_INET);
+
+# Timeout setting - should be long enough to allow a few lookup failures.
+my $timeout = 30;
+
+# From Nagios::Plugin::Functions
+use constant OK         => 0;
+use constant WARNING    => 1;
+use constant CRITICAL   => 2;
+use constant UNKNOWN    => 3;
+use constant DEPENDENT  => 4;
+my %ERRORS = (
+    'OK'        => OK,
+    'WARNING'   => WARNING,
+    'CRITICAL'  => CRITICAL,
+    'UNKNOWN'   => UNKNOWN,
+    'DEPENDENT' => DEPENDENT,
+);
+my %STATUS_TEXT = reverse %ERRORS;
+
+if (@ARGV != 2 || $ARGV[1] !~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/) {
+	print "Usage: check_lookup <hostname> <ip_address>\n";
+	exit UNKNOWN;
+}
+
+my $status = OK;
+my $msg;
+
+# Plugin timeout
+$SIG{'ALRM'} = sub {
+	print "$STATUS_TEXT{(WARNING)}: Lookup timed out\n";
+	exit WARNING;
+};
+alarm($timeout);
+
+# This isn't very intuitive...
+my $ip = ((gethostbyname ($ARGV[0]))[4])[0];
+$ip = join ('.', unpack ('C4', $ip)) if ($ip);
+if (!defined ($ip)) {
+	$status = WARNING;
+	$msg = "Couldn't resolve host $ARGV[0];";
+} elsif ($ip ne $ARGV[1]) {
+	$status = WARNING;
+	$msg = "Host $ARGV[0] doesn't resolve to $ARGV[1]: $ip;";
+}
+
+# So don't even bother about this one ;)
+my $host = (gethostbyaddr (pack ('C4', split (/\./, $ARGV[1])), AF_INET))[0];
+$host = (split (/\./, $host))[0] if ($host);
+if (!defined ($host)) {
+	$status = WARNING;
+	$msg .= "Couldn't resolve IP $ARGV[1];"
+} elsif (lc($host) ne lc($ARGV[0])) {
+	$status = WARNING;
+	$msg .= "IP $ARGV[1] doesn't resolve to $ARGV[0]: $host;";
+}
+if ($msg) {
+	chop ($msg);
+	$msg .= "\n";
+}
+
+if ($status) {
+	print $STATUS_TEXT{$status} . ' - ' . $msg;
+	exit $status;
+} else {
+	print $STATUS_TEXT{(OK)} . " - Host lookups successful\n";
+	exit $status;
+}
+

@@ -1,0 +1,29 @@
+#!/usr/bin/perl
+#
+# Checks fils size - nice example of minimalistic plugin using Nagios::Plugin
+# Author: Mark Steele <mark@control-alt-del.org>
+#
+
+use Nagios::Plugin;
+use strict;
+
+my $np = Nagios::Plugin->new( 
+		shortname => "FILESIZE",
+		usage => "Usage: %s [ -v|--verbose ]  [ -f|--file <file path> ] [ -C|--csize=<threshold> ] [ -W|--wsize=<threshold> ]"
+          );
+
+$np->add_arg(spec => 'wsize|W=s',help => 'Warning file size (bytes)', required => 1);
+$np->add_arg(spec => 'csize|C=s',help => 'Critical file size (bytes)', required => 1);
+$np->add_arg(spec => 'file|f=s',help => 'Path to file to check', required => 1);
+
+$np->getopts;
+
+if (!-e $np->opts->file) {
+  $np->nagios_exit(UNKNOWN,"No such file");
+} elsif (-s $np->opts->file > $np->opts->csize) {
+  $np->nagios_exit(CRITICAL,"File size: " . -s _);
+} elsif (-s _ > $np->opts->wsize) {
+  $np->nagios_exit(WARNING,"File size: " . -s _);
+} else {
+  $np->nagios_exit(OK,"File size: " . -s _);
+}

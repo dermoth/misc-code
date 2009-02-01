@@ -1,0 +1,21 @@
+#!/bin/bash
+#
+# notify_stall_counter - A script used by Cacti getlog.pl to alert Nagios of stall counters
+# Requires send_nsca as transport mechanism, even is Nagios is run locally.
+#
+# Author: Thomas Guyot-Sionnest <tguyot@gmail.com>
+#
+# This script is released in the public domain.
+#
+
+monitoring_host=$(hostname)
+sendnsca_cmd="/usr/bin/send_nsca -H $monitoring_host -c /etc/send_nsca.cfg"
+nagios_svc="Performance Log"
+
+if [ -z "$1" ]; then
+	echo "Usage: $0 <hostname>"
+	exit 1
+fi
+
+echo -e "$1\t$nagios_svc\t1\tCacti poll detected stall counters" | $sendnsca_cmd
+

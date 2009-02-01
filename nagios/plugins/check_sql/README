@@ -1,0 +1,123 @@
+  CHECK_SQL v.0.9.3  -  README
+
+check_sql is a database-independent SQL check written in Perl. It can
+check any database by specifying the Perl driver to use, and support
+hard-coded MSSQL and MySQL modes when called as check_mssql and
+check_mysql respectively (i.e. using symlinks).
+
+By default check_sql only runs the query "SELECT 1 AS Response". The
+query can be customized (you can also run sprocs which can do in-depth
+checks) and the plug-in can:
+
+- Check the returned cell as plain text match
+- Check the returned cell as Perl regular expression match
+- Return warning or critical based on thresholds (numeric results only)
+- Show the result on the status line
+
+Caveats: If the query returns more than one column or row, it will only
+check the data of the first column of the first row.
+
+Usage: check_sql -H <hostname> -d <driver> [ -p <port> ] [ -t <timeout> ]
+    -U <user> -P <pass> [ -D <db> ] [ -w <warn_range> ] [ -c <crit_range> ]
+    [ -W <warn_range> ] [ -C <crit_range> ] [ -q query ] [ -e expect_string ]
+    [ -r ] [ -s ] [ -l label ]
+
+
+If invoked using a name predefined for a database type:
+
+Usage: check_mssql -H <hostname> [ -p <port> ] [ -t <timeout> ]
+    -U <user> -P <pass> [ -D <db> ] [ -w <warn_range> ] [ -c <crit_range> ]
+    [ -W <warn_range> ] [ -C <crit_range> ] [ -q query ] [ -e expect_string ]
+    [ -r ] [ -s ] [ -l label ]
+
+Apart the standard Nagios::Plugin arguments, the following arguments are
+supported:
+
+ -H, --hostname=<hostname>
+   SQL Database hostname
+ -d, --driver=<driver>
+   DBD driver name
+ -p, --port=<port>
+   SQL TCP port (default: driver-dependent).
+ -U, --username=<username>
+   Username to connect with.
+ -P, --password=<password>
+   Password to use with the username.
+ -D, --database=<db>
+   Database to use.
+ -w, --warning=THRESHOLD
+   Warning threshold for the responce time. See
+   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT
+   for the threshold format.
+ -c, --critical=THRESHOLD
+   Critical threshold for the responce time. See
+   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT
+   for the threshold format.
+ -q, --query=<SQL_query>
+   SQL Query ro execute on the server (default: 'SELECT 1 AS Response').
+ -e, --expect=<expect_string>
+   The expected result from the SQL server (first cell of first row). Cannot
+   be used with -W or -C.
+ -r, --regexp
+   Allow Perl regular expressions to be used with -e.
+ -W, --rwarning=THRESHOLD
+   Warning threshold for the returned value. Value must be numeric. See
+   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT
+   for the threshold format. Cannot be used with -e.
+ -C, --rcritical=THRESHOLD
+   Critical threshold for the returned value. Value must be numeric. See
+   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT
+   for the threshold format. Cannot be used with -e.
+ -s, --show
+   Show the result of the SQL query in the status text.
+ -l, --label=label
+   Label used to present the SQL result (default: 'result'). If in the form
+   'LABEL,UOM', enables performance data for the result. Label is effective
+   only when used with --show or in the form 'LABEL,UOM'.
+
+Requirements:
+
+This plugins requires at the very least Nagios::Plugin, Time::HiRes and one DBI driver.
+
+For MSSQL it requires FreeTDS and the DBD::Sybase driver. Make sure FreeTDS is compiled with --with-tdsver=8.0
+
+http://www.freetds.org/
+
+For MySQL, it requires the MySQL libraries and DBD::mysql.
+
+Below is simply a copy of check_sql header.
+--------------------------------------------------------------------------
+
+check_sql  -  Run a simple test query against a SQL Server
+
+For MySQL this script requires DBD::mysql.
+
+Note: Driver-specific timeouts aren't implemented because
+  1. It doesn't work as expected on DBD::mysql
+  2. DBD::Sybase defaults to 60 seconds which is enough for most people
+
+For MSSQL this script requires the FreeTDS library and DBD::Sybase Perl
+module. The SYBASE environment variable also needs to be defined.
+Make sure FreeTDS is compiled with --with-tdsver=8.0 !!!
+
+Other drivers are untested.
+
+It also requires File:::Basename, Nagios::Plugins and Time::HiRes.
+
+Copyright (c) 2007 Thomas Guyot-Sionnest <tguyot@gmail.com>
+Copyright (c) 2007 Nagios Plugin Development Team
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+

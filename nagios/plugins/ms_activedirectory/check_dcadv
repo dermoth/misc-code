@@ -1,0 +1,147 @@
+#! /usr/bin/perl -w
+#
+# check_dcadv -  Check for Windows Domain Controllers advertising trough LDAP
+#
+# This script check the "defaultNamingContext" DN for a list of advertised
+# domain controllers.
+#
+# This script requires OpenLDAP and Net::LDAP.
+#
+#
+# Copyright (C) 2006 Thomas Guyot-Sionnest <tguyot@gmail.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+#
+
+use strict;
+use Getopt::Long;
+use Net::LDAP;
+use vars qw($opt_H $opt_U $opt_P $opt_D $opt_t);
+use vars qw($PROGNAME);
+use lib "/usr/local/nagios/libexec";
+use utils qw($TIMEOUT %ERRORS);
+
+$PROGNAME = "check_dcadv";
+$ENV{'PATH'}='';
+$ENV{'BASH_ENV'}='';
+$ENV{'ENV'}='';
+
+Getopt::Long::Configure('bundling');
+GetOptions (
+	"H=s" => \$opt_H, "hostname=s" => \$opt_H,
+	"U=s" => \$opt_U, "user=s" => \$opt_U,
+	"P=s" => \$opt_P, "pass=s" => \$opt_P,
+	"D=s" => \$opt_D, "dclist=s" => \$opt_D,
+	"t=s" => \$opt_t, "timeout=i" => \$opt_t );
+
+unless (defined($opt_H) && defined($opt_U) && defined($opt_P) && defined($opt_D)) {
+  print "Usage: $PROGNAME -H host -U username -P password -D dc_list [ -t timeout ]\n
+Options:
+-H --hostname=HOST
+  Hostame for LDAP check
+-U --user=STRING
+  Username in the form 'user\@domain.com'
+-P --pass=STRING
+  Password for the above user
+-D --dclist=STRING
+  Commas-separated list of domains controllers to check. Case insensitive.
+-t --timeout=INTEGER
+  Timeout for LDAP request. Default to $TIMEOUT.\n";
+  exit $ERRORS{'UNKNOWN'};
+}
+
+# Parse arguments
+my $hostname = $opt_H;
+my $username = $opt_U;
+my $password = $opt_P;
+
+my %dclist;
+for(split(/,/, lc($opt_D))) { $dclist{$_} = 1; }
+
+my $timeout = $TIMEOUT;
+$timeout = int($opt_t) if (defined($opt_t));
+
+# Just in case of problems, let's not hang Nagios
+$SIG{'ALRM'} = \&report_err;
+alarm($timeout);
+
+my $ldap = Net::LDAP->new($hostname) or report_err("Can't connect with LDAP: $!");
+
+my $mesg = $ldap->bind($username, password => $password);
+
+$mesg->code &&  report_err("L:" . __LINE__ . ": " . $mesg->error);
+
+# Get the defaultNamingContext value
+$mesg = $ldap->search(
+                        base   => '',
+                        filter => '(objectclass=*)',
+                        scope  => 'base',
+                        attrs => ['defaultNamingContext']
+                      );
+
+$mesg->code &&  report_err("L:" . __LINE__ . ": " . $mesg->error);
+
+my $basedn = $mesg->entry(0)->get_value('defaultNamingContext');
+
+$mesg = $ldap->search(
+                        base   => $basedn,
+                        scope  => 'base',
+                        filter => '(objectclass=*)',
+                        attrs  => ['masteredBy']
+                      );
+
+$mesg->code &&  report_err("L:" . __LINE__ . ": " . $mesg->error);
+
+my %members;
+for (@{$mesg->entry(0)->get_value('masteredBy', asref => 1)}) {
+  (my $member = (split(/,/, lc))[1]) =~ s/cn=//;
+  $members{$member} = 1;
+}
+
+$ldap->unbind;
+
+#Turn off alarm
+alarm(0);
+
+my $missing;
+for (keys %dclist) {
+  $missing .= "$_," unless (defined($members{$_}));
+}
+
+if (defined($missing)) {
+  chop $missing;
+  report_err("DC not advertised: $missing");
+}
+
+for (keys %members) {
+  $missing .= "$_," unless (defined($dclist{$_}));
+}
+
+if (defined($missing)) {
+  chop $missing;
+  print "WARNING: DC not checked but advertised: $missing\n";
+  exit $ERRORS{'WARNING'};
+}
+
+print "OK: All DC are advertised\n";
+exit $ERRORS{'OK'};
+
+sub report_err {
+  my $message = shift;
+  $message = "LDAP request timed out" if ($message eq 'ALRM');
+  print "CRITICAL: $message\n";
+  exit $ERRORS{'CRITICAL'};
+}
+

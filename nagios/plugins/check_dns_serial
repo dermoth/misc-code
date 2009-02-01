@@ -1,0 +1,161 @@
+#! /usr/bin/perl
+#
+# check_dns_sync  -  Check serial synchronization between multiple DNS servers
+#
+# Copyright (C) 2006-2007 Thomas Guyot-Sionnest <tguyot@gmail.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+#
+
+use strict;
+use warnings;
+use vars qw($PROGNAME $VERSION);
+use Nagios::Plugin;
+use Net::DNS;
+
+$PROGNAME = 'check_dns_serial';
+$VERSION = '1.03';
+
+my $np = Nagios::Plugin->new(
+  usage => "Usage: %s -H <hostname>[,<hostname2>...] -M <master>\n"
+    . '   -D <domain>[,<domain2>...]',
+  version => $VERSION,
+  plugin  => $PROGNAME,
+  shortname => uc($PROGNAME),
+  blurb => 'Check serial synchronization between multiple DNS servers',
+  timeout => 20,
+);
+
+$np->add_arg(
+  spec => 'hostname|H=s@',
+  help => "-H, --hostname=<hostname_list>\n"
+    . "   Comma-separated list of DNS servers to check (can be specified multiple\n"
+    . '   times).',
+  required => 1,
+);
+
+$np->add_arg(
+  spec => 'master|M=s',
+  help => "-M, --master=<master>\n"
+    . "   The master server to check serials against.",
+  required => 1,
+);
+
+$np->add_arg(
+  spec => 'domain|D=s@',
+  help => "-D, --domain=<domain_list>\n"
+    . "   Comma-separated list of domains to check (can be specified multiple times).\n"
+    . "   Domains must have a SOA record.",
+  required => 1,
+);
+
+$np->getopts;
+
+# Assign, then check args
+my $master = $np->opts->master;
+
+my (@hostnames, @domains) = ();
+for (@{$np->opts->hostname}) {
+  push @hostnames, split(/,/);
+}
+for (@{$np->opts->domain}) {
+  push @domains, split(/,/);
+}
+
+$np->nagios_exit('UNKNOWN', "Master server hostname contains invalid characters.")
+  if ($master =~ /\`|\~|\!|\$|\%|\^|\&|\*|\||\'|\"|\<|\>|\?|\,|\(|\)|\=/);
+
+for (@hostnames) {
+  $np->nagios_exit('UNKNOWN', "Hostname $_ contains invalid characters.")
+    if (/\`|\~|\!|\$|\%|\^|\&|\*|\||\'|\"|\<|\>|\?|\,|\(|\)|\=/);
+}
+
+for (@domains) {
+  $np->nagios_exit('UNKNOWN', "Domain $_ contains invalid characters.")
+    if (/\`|\~|\!|\$|\%|\^|\&|\*|\||\'|\"|\<|\>|\?|\,|\(|\)|\=/);
+}
+
+# Set up the alarm
+alarm($np->opts->timeout);
+
+# First get the serials from the master...
+my %serials;
+my ($warningmsg, $errormsg);
+my $res = Net::DNS::Resolver->new(
+          nameservers => [$master],
+          recurse     => 0,
+          retrans     => 1, # Retrans timeout; result seems to be the double yet can't be lower than 1
+          debug       => $np->opts->verbose >= 3 ? 1 : 0,
+);
+
+foreach my $domain (@domains) {
+  my $query = $res->query($domain, 'SOA');
+  print STDERR "Getting master serial from $domain on $master\n" if ($np->opts->verbose > 1);
+  if (!defined($query)) {
+    $errormsg .= "Cant get serial for $domain on master ($master). ";
+    next;
+  }
+
+  foreach my $rr ($query->answer) {
+    next unless $rr->type eq 'SOA';
+    $warningmsg .= "Unexpected duplicate SOA record for domain $domain. " if (defined($serials{$domain}));
+    if (defined($rr->serial)) {
+      $serials{$domain} = $rr->serial;
+      print STDERR "Serial for $domain is: " . $serials{$domain} . "\n" if ($np->opts->verbose);
+    } else {
+      $errormsg .= "Cant get serial for $domain on $master. ";
+    }
+  }
+}
+
+# Then loop around for each host to check
+foreach my $hostname (@hostnames) {
+  foreach my $domain (@domains) {
+    my $res = Net::DNS::Resolver->new(
+           nameservers => [$hostname],
+           recurse     => 0,
+           retrans     => 1, # Retrans timeout; result seems to be the double yet can't be lower than 1
+           debug       => $np->opts->verbose >= 3 ? 1 : 0,
+    );
+
+    print STDERR "Checking $domain on $hostname\n" if ($np->opts->verbose > 1);
+    my $query = $res->query($domain, 'SOA');
+    next if (!defined($serials{$domain})); # We should have an error already
+    if (!defined($query)) {
+      $errormsg .= "Cant get serial for $domain on $hostname. ";
+      next;
+    }
+
+    foreach my $rr ($query->answer) {
+      next unless $rr->type eq 'SOA';
+      $errormsg .= "Serials between $master and $hostname does not match for $domain: " . $serials{$domain} . " != " . $rr->serial . ". "
+        if ($serials{$domain} != $rr->serial);
+    }
+  }
+}
+
+alarm(0);
+
+if (defined($errormsg)) {
+  chop($errormsg);
+  $np->nagios_exit('CRITICAL', $errormsg)
+}
+
+if (defined($warningmsg)) {
+  chop($warningmsg);
+  $np->nagios_exit('WARNING', $warningmsg)
+}
+
+$np->nagios_exit('OK', 'All serials are matching. Compared ' . scalar(@domains) . ' domains between 1 master and ' . scalar(@hostnames) . ' slaves');

@@ -1,0 +1,143 @@
+#! /usr/bin/perl -w
+#
+# check_svstat  -  Parses 'svstat' output and check if service is up or down
+#
+# This check parses the 'svstat' command output and returns
+# whenever the service si up or down.
+#
+# check_svstat requires only one argument, the full path to
+# the service directory (ex. /service/dnscache)
+#
+# Copyright (C) 2006 Thomas Guyot-Sionnest <tguyot@gmail.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+#
+
+use strict;
+use vars qw($PROGNAME);
+use vars qw($svstat_path $minruntime);
+use lib "/usr/libexec/nagios";
+use utils qw($TIMEOUT %ERRORS);
+
+$PROGNAME = "check_svstat";
+$ENV{'PATH'}='';
+$ENV{'BASH_ENV'}='';
+$ENV{'ENV'}='';
+
+# Please set the svstat patch here if different
+$svstat_path = "/usr/local/bin/svstat";
+# Default minimum runtime
+$minruntime = 60;
+
+if (!defined($ARGV[0])) {
+  print "Usage: $PROGNAME <SERVICE_PATH> [ <MIN_RUNTIME> ]\n";
+  exit $ERRORS{'UNKNOWN'};
+}
+
+require File::Basename;
+my $service = File::Basename::basename($ARGV[0]);
+
+$minruntime = $ARGV[1] if defined($ARGV[1]);
+
+# Just in case of problems, let's not hang Nagios
+$SIG{'ALRM'} = sub {
+        print "CRITICAL: $svstat_path timed out\n";
+        exit $ERRORS{"CRITICAL"};
+};
+alarm($TIMEOUT);
+
+# Get the services list in automatic mode
+my $svstat_return = `$svstat_path $ARGV[0]`;
+if ($? != 0) {
+  print "CRITICAL: Could not retrieve information from svstat.\n";
+  exit $ERRORS{'CRITICAL'};
+}
+
+#Turn off alarm
+alarm(0);
+
+$svstat_return =~ /^.+?:\s(up|down)(?:\s.*){0,1}\s(\d+)\sseconds.*\n/;
+
+my ($status, $duration) = ($1, $2);
+
+if (!defined $status || !defined $duration) {
+  print "CRITICAL: Could not parse result from svstat\n";
+  exit $ERRORS{'CRITICAL'};
+}
+
+if ($status eq 'up') {
+  if ($duration > $minruntime) {
+    print "OK: Service $service running for " . convtime($duration)
+      . "|uptime=${duration}s\n";
+    exit $ERRORS{'OK'};
+  } else {
+    print "CRITICAL: Service $service respawning too fast (running for "
+      . convtime($duration) . ")|uptime=${duration}s\n";
+    exit $ERRORS{'CRITICAL'};
+  }
+} elsif ($status eq 'down') {
+  print "CRITICAL: Service $service down since " . convtime($duration)
+    . "|downtime=${duration}s\n";
+  exit $ERRORS{'CRITICAL'};
+}
+
+print "UNKNOWN: Programmer error occured\n";
+exit $ERRORS{'UNKNOWN'};
+
+sub convtime {
+  my $duration = shift;
+  my $message;
+
+  my $years = int($duration/60/60/24/365);
+  my $days = int($duration/60/60/24) - ($years * 365);
+  my $hours = int($duration/60/60) - ($years * 365 * 24) - ($days * 24);
+  my $min = int($duration/60) - ($years * 365 * 24 * 60) - ($days * 24 * 60) - ($hours * 60);
+  my $sec = $duration  - ($years * 365 * 24 * 60 * 60) - ($days * 24 * 60 * 60) - ($hours * 60 * 60) - ($min * 60);
+
+  if ($years > 0) {
+    $message = "$years year" . ($years != 1 ? 's' : '');
+    if (($days + $hours + $min) > 0) {
+      $message .= ', ';
+    } elsif ($sec > 0) {
+      $message .= ' and ';
+    }
+  }
+  if ($days > 0) {
+    $message .= "$days day" . ($days != 1 ? 's' : '');
+    if (($hours + $min) > 0) {
+      $message .= ', ';
+    } elsif ($sec > 0) {
+      $message .= ' and ';
+    }
+  }
+  if ($hours > 0) {
+    $message .= "$hours hour" . ($hours != 1 ? 's' : '');
+    if ($min > 0) {
+      $message .= ', ';
+    } elsif ($sec > 0) {
+      $message .= ' and ';
+    }
+  }
+  if ($min > 0) {
+    $message .= "$min minute" . ($min != 1 ? 's' : '');
+    $message .= ' and ' if ($sec > 0);
+  }
+  if ($sec > 0 || ($years + $days + $hours + $min) == 0) {
+    $message .= "$sec second" . ($sec > 1 ? 's' : '');
+  }
+
+  return($message);
+}
+
