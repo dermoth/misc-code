@@ -64,7 +64,7 @@ $MAX_AGE = 120; # 2 minutes.
 # seconds (It's up to you to make good use of this). Have no effect if
 # $MAX_AGE isn't defined. The original idea was to have a Nagios event handler
 # restart the counter when stall (Implement it the way you like though).
-$STALL_CMD = "/usr/libexec/nagios/eventhandlers/notify_stall_counter $ARGV[0]";
+$STALL_CMD = "/usr/local/nagios/libexec/eventhandlers/notify_stall_counter $ARGV[0]";
 #
 # This is the maximum read size for each read. Optimal performance can be
 # obtained by setting this to the smallest number higher than your usual
