@@ -1,0 +1,186 @@
+#!/usr/bin/perl
+#
+# check_akamai_bandwidth  -  Checks akamai bandwidth for all CP codes
+#
+# Copyright (C) 2009 Thomas Guyot-Sionnest <tguyot@gmail.com>
+#
+# FIXME: This plugin might give unexpected results if the call succeed but no
+#        data is returned - not sure what's the proper way to check that.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+#
+
+use strict;
+use warnings;
+use SOAP::Lite;
+use MIME::Base64;
+use Nagios::Plugin;
+use Class::Date qw(gmdate);
+use vars qw($PROGNAME $VERSION $user $pass $soap);
+#use Data::Dumper;
+
+$PROGNAME = 'check_akamai_bandwidth';
+$VERSION = '1.0RC1';
+
+# Debug options (Require Data::Dumper)
+#use SOAP::Lite +trace => [
+#	method => \&soap_debug,
+#	fault => \&soap_debug,
+#	trace => \&soap_debug,
+#	debug => \&soap_debug,
+#];
+
+# Init nagios plugin
+
+my $np = Nagios::Plugin->new(
+	usage => "Usage: %s -u <user> -p <password>\n"
+		. '       [ -w <warning> ] [ -c <critical> ]',
+	version => $VERSION,
+	plugin  => $PROGNAME,
+	shortname => uc($PROGNAME),
+	blurb => 'Checks akamai bandwidth for all CP codes',
+	timeout => 30,
+);
+
+$np->add_arg(
+	spec => 'user|u=s',
+	help => "-u, --username=<user>\n"
+	   . '   Username for Akamai login.',
+	required => 1,
+);
+
+$np->add_arg(
+	spec => 'pass|p=s',
+	help => "-p, --pass=<password>\n"
+	   . '   Password for Akamai login.',
+	required => 1,
+);
+
+$np->add_arg(
+	spec => 'warning|w=s',
+	help => "-w, --warning=THRESHOLD\n"
+	   . "   Warning threshold in Mbits/s. See\n"
+	   . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
+	   . '   for the threshold format.',
+	required => 0,
+);
+
+$np->add_arg(
+	spec => 'critical|c=s',
+	help => "-c, --critical=THRESHOLD\n"
+	   . "   Critical threshold in Mbits/s. See\n"
+	   . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
+	   . '   for the threshold format.',
+	required => 0,
+);
+
+# process and check args
+$np->getopts;
+($user, $pass) = ($np->opts->user, $np->opts->pass);
+
+$np->set_thresholds(
+	warning => $np->opts->warning,
+	critical => $np->opts->critical,
+);
+
+# Return code and message
+my $np_res = OK;
+my $np_msg = '';
+
+# Set alarm
+alarm $np->opts->timeout;
+
+# First get password expiry
+
+$soap = SOAP::Lite
+	->proxy('https://control.akamai.com/webservices/services/AWSManager')
+	->on_fault(\&soap_error)
+	->readable(1);
+
+my $res = $soap->getPasswordExpirationDate();
+checkres($soap);
+
+my $expiry = gmdate($res->paramsall)->epoch() - time();
+if ($expiry < 60*60*24*30) {
+	if ($expiry < 60*60*24*15) {
+		$np_res = CRITICAL;
+	} else {
+		$np_res = WARNING;
+	}
+	$np_msg = 'Account password will expire in ' . int(new Class::Date::Rel($expiry)->day) . ' days, ';
+}
+
+# Now get real data...
+
+$soap = SOAP::Lite
+	->proxy('https://control.akamai.com/nmrws/services/RealtimeReports')
+	->on_fault(\&soap_error)
+	->readable(1);
+
+# We need the CP Code list
+
+$res = $soap->getCPCodes();
+checkres($soap);
+
+my $cpcodes = $res->paramsall;
+my @cpcodes = map { $_->{cpcode} } @$cpcodes;
+my %uniq;
+@uniq{@cpcodes} = ();
+@cpcodes = keys(%uniq);
+
+# Now get bandwidth usage fro all CP codes...
+$res = $soap->getEdgeSuiteSummary(\@cpcodes, 'all_es', 'all');
+checkres($soap);
+
+my $bw = (split(/,/, $res->paramsall))[0];
+$np->nagios_exit('UNKNOWN', "Invalid bandwidth result") if (!defined($bw));
+
+# bits/sec to Mbits/sec
+$bw /= 1000*1000;
+
+$np->add_perfdata(
+	label => 'bandwidth',
+	value => $bw,
+	uom => 'Mbits',
+	threshold => $np->threshold,
+);
+
+$np->nagios_exit($np->max_state_alt($np_res, $np->check_threshold($bw)), $np_msg . "Current bandwidth usage: ${bw}Mbits/s");
+
+
+sub SOAP::Transport::HTTP::Client::get_basic_credentials {
+	return $user => $pass;
+}
+
+sub checkres {
+	my $soap = shift;
+	if (!$soap->transport->is_success) {
+		die "Transport error: " . $soap->transport->status;
+	}
+}
+
+sub soap_error {
+	my ($soap, $res) = @_;
+	if (ref($res) ne 'SOAP::SOM') {
+		# Can't call $res - auth failure?
+		die "Couldn't retrieve data, authentication failure?";
+	}
+	die "\nError retrieving data: \n", $res->faultstring,"\n";
+}
+
+sub soap_debug {
+	print "DEBUG\n" . Dumper(\@_) . "END\n";
+}
+
