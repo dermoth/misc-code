@@ -32,7 +32,7 @@ use vars qw($PROGNAME $VERSION $user $pass $soap);
 #use Data::Dumper;
 
 $PROGNAME = 'check_akamai_bandwidth';
-$VERSION = '1.0RC1';
+$VERSION = '1.0RC2';
 
 # Debug options (Require Data::Dumper)
 #use SOAP::Lite +trace => [
@@ -145,7 +145,7 @@ $res = $soap->getEdgeSuiteSummary(\@cpcodes, 'all_es', 'all');
 checkres($soap);
 
 my $bw = (split(/,/, $res->paramsall))[0];
-$np->nagios_exit('UNKNOWN', "Invalid bandwidth result") if (!defined($bw));
+$np->nagios_exit('UNKNOWN', "Invalid bandwidth result") if ($bw !~ /^\d+$/);
 
 # bits/sec to Mbits/sec
 $bw /= 1000*1000;
