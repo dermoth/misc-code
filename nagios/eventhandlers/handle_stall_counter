@@ -18,8 +18,8 @@ use warnings;
 # Fork to let Nagios keep on working...
 if (fork != 0) {
 	# Nobody cares if fork failed...
-  warn("Daemonizing... Thanks for calling me.");
-  exit(0);
+	warn("Daemonizing... Thanks for calling me.");
+	exit(0);
 }
 
 die("Usage: $0 <hostname> <hostaddress> <state> <statetype> <stateattempt> <password>") unless (@ARGV == 6);
