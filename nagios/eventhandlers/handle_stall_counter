@@ -24,7 +24,7 @@ if (fork != 0) {
 
 die("Usage: $0 <hostname> <hostaddress> <state> <statetype> <stateattempt> <password>") unless (@ARGV == 6);
 
-my $commandfile = '/var/spool/nagios/nagios.cmd';
+my $commandfile = '/usr/local/nagios/var/rw/nagios.cmd';
 my $hostname = $ARGV[0];
 my $hostaddress = $ARGV[1];
 my $state = $ARGV[2];
