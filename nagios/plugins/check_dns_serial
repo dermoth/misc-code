@@ -2,7 +2,7 @@
 #
 # check_dns_serial  -  Check serial synchronization between multiple DNS servers
 #
-# Copyright (C) 2006-2007 Thomas Guyot-Sionnest <tguyot@gmail.com>
+# Copyright (C) 2006-2009 Thomas Guyot-Sionnest <tguyot@gmail.com>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -26,7 +26,7 @@ use Nagios::Plugin;
 use Net::DNS;
 
 $PROGNAME = 'check_dns_serial';
-$VERSION = '1.03';
+$VERSION = '1.04';
 
 my $np = Nagios::Plugin->new(
   usage => "Usage: %s -H <hostname>[,<hostname2>...] -M <master>\n"
@@ -140,8 +140,8 @@ foreach my $hostname (@hostnames) {
 
     foreach my $rr ($query->answer) {
       next unless $rr->type eq 'SOA';
-      $errormsg .= "Serials between $master and $hostname does not match for $domain: " . $serials{$domain} . " != " . $rr->serial . ". "
-        if ($serials{$domain} != $rr->serial);
+      $errormsg .= "Serials between $master and $hostname does not match for $domain: " . $rr->serial . " != " . $serials{$domain} . ". "
+        if ($rr->serial != $serials{$domain});
     }
   }
 }
