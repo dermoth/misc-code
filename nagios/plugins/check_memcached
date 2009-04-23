@@ -1,0 +1,209 @@
+#!/usr/bin/php
+<?php
+/*
+ * check_memcached - PHP plugin for checking evictions and ratio of Memcached
+ * v.1.0
+ *
+ * This script query stats on a Memcached server to get the aberage number of
+ * evictions per minute and cache hit ratio.
+ *
+ * Copyright (C) 2009 Thomas Guyot-Sionnest <tguyot@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ */
+
+// Default memcached port
+$port=11211;
+
+// Nagios=plugins variables
+$progname = str_replace('check_', '', basename($_SERVER["SCRIPT_NAME"]));
+//$progname = 'memcached';
+$errors = array(
+	0 => 'OK',
+	1 => 'WARNING',
+	2 => 'CRITICAL',
+	3 => 'UNKNOWN',
+);
+$errorstr = array_flip($errors);
+foreach (array_keys($errorstr) as $key) {
+	define('STATE_'.$key, $errorstr[$key]);
+}
+
+$shortopts = 'H:p:w:c:P:W:C:hv';
+
+$options = getopt($shortopts);
+
+if (isset($options['h']))
+	np_help();
+
+if (!isset($options['H']))
+	np_help('You must specify a hostname!');
+
+if (!isset($options['w']) && !isset($options['c']))
+	np_help('You must specify at least warning or critical threshold');
+
+if (!isset($options['P']))
+	np_help('You must pass a performance data string');
+
+if (!isset($options['p']))
+	$options['p'] = $port;
+else if (strspn($options['p'], "1234567890") != strlen($options['p']))
+	np_help('Port contains invalid characters');
+
+if (!isset($options['v']))
+	$options['v'] = array();
+
+$th_err = false;
+foreach (array('w', 'c', 'W', 'C') as $th) {
+	if (isset($options[$th]) && !is_numeric($options[$th])) {
+		echo 'Error: -'.$th.': Invalid number: '.$options[$th]."\n";
+		$th_err = true;
+	}
+}
+if ($th_err) np_help('Invalid threshold');
+
+// Prepare runtime variables
+$ret = STATE_OK;
+$msg = '';
+$perfstr = '';
+
+if ($options['v']) echo "Connecting to memcached\n";
+$memcache1 = @memcache_connect($options['H'], $options['p']);
+
+// Prepare eviction counter
+$now = time();
+if (count($options['v'])>=2) echo "Parsing performance data (now: $now)\n";
+$last = parse_last($options['P']);
+if (count($options['v'])>=3) var_dump($last);
+
+if ($memcache1) {
+	if ($options['v']) echo "Connectied, getting stats\n";
+	$stats = $memcache1->getstats();
+	if (count($options['v'])>=3) var_dump($stats);
+
+	$hit_ratio = sprintf("%.02f",$stats['get_hits']/$stats['get_misses']);
+	if (count($options['v'])>=2) echo "Hit ratio: $hit_ratio\n";
+
+	$evictions = false;
+	if (count($last) == 2) {
+		// We have values to compare - can't divide by zero though
+		if ($now == $last[0]) {
+			np_exit(STATE_UNKNOWN, 'MEMCACHED UNKNOWN - Last and current times are the same!');
+		}
+		
+		$evictions = ($stats['evictions'] - $last[1]) / ($now - $last[0]);
+	}
+	if (count($options['v'])>=2) echo "Evictions: $evictions\n";
+
+	if ($evictions === false) {
+		$msg = 'Evictions unknown, ';
+		$ret = STATE_UNKNOWN;
+	}
+	else if (isset($options['c']) && $evictions > $options['c']) {
+		$msg = 'Evictions over '.$options['c'].'/min, ';
+		$ret = STATE_CRITICAL;
+	}
+	else if (isset($options['w']) && $evictions > $options['w']) {
+		$msg = 'Evictions over '.$options['w'].'/min, ';
+		$ret = STATE_WARNING;
+	}
+
+	if (isset($options['C']) && $hit_ratio < $options['C']) {
+		$msg .= 'Hit ratio is under '.$options['C'].', ';
+		$ret = STATE_CRITICAL;
+	}
+	else if (isset($options['W']) && $hit_ratio < $options['W']) {
+		$msg = 'Hit ratio is under '.$options['W'].', ';
+		$ret = $ret != STATE_CRITICAL ? STATE_WARNING : $ret;
+	}
+	if ($ret == STATE_OK) {
+		$msg = 'Cache is within thresholds';
+	}
+	else if (strlen($msg) > 2) {
+		// Cleanup $msg if needed
+		$msg = substr($msg, 0, -2);
+	}
+
+	# eviction counter stats (if they're available)
+	if (isset($stats['evictions'])) {
+		$perfstr = 'time='.$now.' last='.$stats['evictions'];
+	}
+	# Other stats
+	if ($evictions !== false)
+		$perfstr .= ' evictions='.$evictions.';'.(isset($options['w']) ? $options['w'] : '').';'.(isset($options['c']) ? $options['c'] : '').';;';
+	$perfstr .= ' ratio='.$hit_ratio.';'.(isset($options['W']) ? $options['W'] : '').';'.(isset($options['C']) ? $options['C'] : '').';;';
+	np_exit($ret, $msg.' (evict: '.($evictions === false ? 'NaN' : $evictions).'/min, hit: '.$hit_ratio.')|'.$perfstr);
+}
+else {
+	if (count($last) == 2) {
+		$perfstr = 'time='.$last[0].' last='.$last[1];
+	}
+	np_exit(STATE_CRITICAL, 'Connection to memcached failed|'.$perfstr);
+}
+
+exit(STATS_UNKNOWN); // rly?!
+
+function parse_last($str) {
+	$last = array();
+	$perfitems = explode(' ', $str);
+	for ($i = 0; $i < count($perfitems); $i++){
+		$idx=-1;
+		if (strpos($perfitems[$i], 'time=') === 0) {
+			$idx=0;
+		} else if (strpos($perfitems[$i], 'last=') === 0) {
+			$idx=1;
+		}
+		if ($idx != -1) {
+			$val = substr($perfitems[$i], 5);
+			$len = strspn($val, '1234567890');
+			$last[$idx] = substr($val, 0, $len);
+		}
+	}
+	return($last);
+}
+
+function np_exit($status, $text) {
+	global $progname, $errors;
+
+	echo strtoupper($progname).' '.$errors[$status].' - '.$text."\n";
+	exit($status);
+}
+
+function np_help($errstr = false) {
+	global $progname, $port;
+	if ($errstr !== false) {
+		echo 'Error: '.$errstr."\n\n";
+	}
+
+	echo 'Usage: check_'.$progname." -H <host> [-p <port>] -w <warning> -c <critical>\n";
+	echo "       -P <perfdata> [-W <ratio_warn>] [-c <ratio_crit>]\n";
+	echo "\n";
+	echo "Options:\n";
+	echo "  -H STRING\n";
+	echo "    Host to connect to.\n";
+	echo "  -p INTEGER\n";
+	echo "    Port to connect to (default: ".$port.").\n";
+	echo "  -w DOUBLE\n";
+	echo "    Warning threshold for evictions per minute.\n";
+	echo "  -c DOUBLE\n";
+	echo "    Critical threshold for evictions per minute.\n";
+	echo "  -P STRING\n";
+	echo "    Perfdata string from previous check, needed to calculate evictions.\n";
+	echo "  -W DOUBLE\n";
+	echo "    Warning threshold for hit ratio (higher is better).\n";
+	echo "  -C DOUBLE\n";
+	echo "    Critical threshold for hit ratio (higher is better).\n";
+	echo "  -h\n";
+	echo "    This help message\n";
+	echo "  -v\n";
+	echo "    Pring debug messages\n";
+	echo "\n";
+
+	exit(STATE_UNKNOWN);
+}
+
+?>
