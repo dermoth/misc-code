@@ -118,8 +118,8 @@ alarm($timeout);
 my $cmd = $basecmd . "-v ENUMSERVICE -l Automatic";
 my $svc_list = `$cmd`;
 if ($? != 0) {
-  print "CRITICAL: Could not retrieve information from check_nt. Host down?\n";
-  exit $ERRORS{'CRITICAL'};
+  print "UNKNOWN: Could not retrieve information from check_nt. Host down?\n";
+  exit $ERRORS{'UNKNOWN'};
 }
 chomp $svc_list;
 
