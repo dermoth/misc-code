@@ -7,6 +7,10 @@
 # FIXME: This plugin might give unexpected results if the call succeed but no
 #        data is returned - not sure what's the proper way to check that.
 #
+# FIXME: I don't trust Perl on large values, although it seemed to work fine
+#        when checking a >5Gbits/s account (which is more than 2**32 bits).
+#        Use with care if you have anything bigger!
+#
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
 # as published by the Free Software Foundation; either version 2
@@ -28,11 +32,27 @@ use SOAP::Lite;
 use MIME::Base64;
 use Nagios::Plugin;
 use Class::Date qw(gmdate);
-use vars qw($PROGNAME $VERSION $user $pass $soap);
+use vars qw($PROGNAME $VERSION %PRMAP $PREFIX $user $pass $soap);
 #use Data::Dumper;
 
 $PROGNAME = 'check_akamai_bandwidth';
-$VERSION = '1.0RC2';
+$VERSION = '1.1';
+
+# Mapping of pefixes with multipliers
+%PRMAP = (
+	'b' => 1,
+	'k' => 10**3,
+	'M' => 10**6,
+	'G' => 10**9,
+	'T' => 10**12,
+	'P' => 10**15,
+	'E' => 10**18,
+	'Z' => 10**21,
+	'Y' => 10**24,
+);
+
+# Default prefix
+$PREFIX = 'M';
 
 # Debug options (Require Data::Dumper)
 #use SOAP::Lite +trace => [
@@ -46,7 +66,8 @@ $VERSION = '1.0RC2';
 
 my $np = Nagios::Plugin->new(
 	usage => "Usage: %s -u <user> -p <password>\n"
-		. '       [ -w <warning> ] [ -c <critical> ]',
+		. "       [ -w <warning> ] [ -c <critical> ]\n"
+		. '       [ -P <prefix> ] [ -C <CP_Code>[,...] ]',
 	version => $VERSION,
 	plugin  => $PROGNAME,
 	shortname => uc($PROGNAME),
@@ -71,7 +92,7 @@ $np->add_arg(
 $np->add_arg(
 	spec => 'warning|w=s',
 	help => "-w, --warning=THRESHOLD\n"
-	   . "   Warning threshold in Mbits/s. See\n"
+	   . "   Warning threshold in Mbits/s (or any metric specificd with --prefix). See\n"
 	   . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
 	   . '   for the threshold format.',
 	required => 0,
@@ -80,19 +101,38 @@ $np->add_arg(
 $np->add_arg(
 	spec => 'critical|c=s',
 	help => "-c, --critical=THRESHOLD\n"
-	   . "   Critical threshold in Mbits/s. See\n"
+	   . "   Critical threshold in Mbits/s (or any metric specificd with --prefix). See\n"
 	   . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
 	   . '   for the threshold format.',
+	required => 0,
+);
+
+$np->add_arg(
+	spec => 'prefix|P=s',
+	help => "-P, --prefix=<b|k|M|G|T|P>\n"
+	   . "   Prefix or pretty-printing (default: $PREFIX). Accepted values are: (b)its,\n"
+	   . '   (k)ilobits, (M)egabits, (G)igabits, (T)erabits... up to (Y)ottabits.',
+	default => $PREFIX,
+	required => 0,
+);
+
+$np->add_arg(
+	spec => 'cp|C=s@',
+	help => "-C, --cp=INTEGER\n"
+	   . "   CP Code(s) to check. Multiple CP Codes can be specified comma-separated and\n"
+	   . '   by repeating this option. Default is to check all available CP Codes.',
 	required => 0,
 );
 
 # process and check args
 $np->getopts;
 ($user, $pass) = ($np->opts->user, $np->opts->pass);
+my $prefix = $np->opts->prefix;
+my @checkcp = map { split(/,/, $_) } @{$np->opts->cp} if ($np->opts->cp);
 
 $np->set_thresholds(
-	warning => $np->opts->warning,
-	critical => $np->opts->critical,
+	warning => ($np->opts->warning ? $np->opts->warning * $PRMAP{$prefix} : undef),
+	critical => ($np->opts->critical ? $np->opts->critical * $PRMAP{$prefix} : undef),
 );
 
 # Return code and message
@@ -130,7 +170,6 @@ $soap = SOAP::Lite
 	->readable(1);
 
 # We need the CP Code list
-
 $res = $soap->getCPCodes();
 checkres($soap);
 
@@ -138,26 +177,40 @@ my $cpcodes = $res->paramsall;
 my @cpcodes = map { $_->{cpcode} } @$cpcodes;
 my %uniq;
 @uniq{@cpcodes} = ();
+
+# Check whenever we need checking specific cp codes or all of them
+if (@checkcp) {
+	for (@checkcp) {
+		$np->nagios_die("CP Code $_ not found") unless (exists($uniq{$_}));
+	}
+	%uniq = ();
+	@uniq{@checkcp} = ();
+}
+
 @cpcodes = keys(%uniq);
 
-# Now get bandwidth usage fro all CP codes...
+# Now get bandwidth usage for all CP codes...
 $res = $soap->getEdgeSuiteSummary(\@cpcodes, 'all_es', 'all');
 checkres($soap);
 
 my $bw = (split(/,/, $res->paramsall))[0];
-$np->nagios_exit('UNKNOWN', "Invalid bandwidth result") if ($bw !~ /^\d+$/);
+$np->nagios_die("Invalid bandwidth result") if ($bw !~ /^\d+$/);
 
-# bits/sec to Mbits/sec
-$bw /= 1000*1000;
+my $bw_perf = $bw;
+# convert bits/sec to proper prefix and print it with two decimals (except for bits)
+$bw = sprintf(($prefix eq 'b' ? '%s' : '%.02f'), $bw_perf / $PRMAP{$prefix});
 
 $np->add_perfdata(
 	label => 'bandwidth',
-	value => $bw,
-	uom => 'Mbits',
+	value => $bw_perf,
+	uom => 'b',
 	threshold => $np->threshold,
 );
 
-$np->nagios_exit($np->max_state_alt($np_res, $np->check_threshold($bw)), $np_msg . "Current bandwidth usage: ${bw}Mbits/s");
+# Any further use of prefix is for printing - print nothing if it's set for bits.
+$prefix = '' if ($prefix eq 'b');
+
+$np->nagios_exit($np->max_state_alt($np_res, $np->check_threshold($bw_perf)), $np_msg . "Current bandwidth usage: ${bw}${prefix}bits/s");
 
 
 sub SOAP::Transport::HTTP::Client::get_basic_credentials {
