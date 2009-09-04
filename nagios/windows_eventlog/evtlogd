@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 #
 # evtlogd - evtsys log daemon
-#           v.1.1
+#           v.1.2
 #           Copyright(c) 2008-2009 Thomas Guyot-Sionnest <tguyot@gmail.com>
 #
 # This is a Perl daemon that receives evtsys logs trough syslog-ng and sends
@@ -14,7 +14,7 @@
 #
 #   evtlogd configtest
 #
-# Returns a non-0 status on errors and prints a detailed message to STDOUT.
+# Returns a non-0 status on errors and prints detailed error messages to STDOUT.
 #
 
 use XML::Simple qw(:strict);
@@ -40,7 +40,7 @@ $NAGCMD = '/usr/local/nagios/var/rw/nagios.cmd';
 $NAGLOG = '/usr/local/nagios/var/rw/evtlogd_cmd.log';
 ## Our PID file
 $PID_FILE = '/var/run/evtlogd.pid';
-## Uncomment the following line to write a debug log
+## Uncomment the following line to write a debug log (CAUTION - log may become HUGE)
 #$DBGLOG = '/tmp/evtlogd.log';
 
 # Some useful hashes...
@@ -195,17 +195,28 @@ while (<STDIN>) {
 		# We Got a Winner!(tm). Do some magic to determine if we should alert
 		syswrite (LOG, &$DBGTIME . " [$$] Processing frequency for $LOOKUP[$i]{name} ($i)\n") if ($DBGLOG);
 
-		# But first check that we've seen that host before
-		if (!defined($LOOKUP[$i]{host}{$host})) {
-			@{$LOOKUP[$i]{host}{$host}{freqarray}} = @{$LOOKUP[$i]{freqarray}};
-			$LOOKUP[$i]{host}{$host}{nlast} = 0;
+		# But first check that we've seen that host/event before
+		my $freqref;
+		if ($LOOKUP[$i]{freqperhost}) {
+			if (!defined($LOOKUP[$i]{host}{$host})) {
+				@{$LOOKUP[$i]{host}{$host}{freqarray}} = @{$LOOKUP[$i]{freqarray}};
+				$LOOKUP[$i]{host}{$host}{nlast} = 0;
+			}
+			$freqref = $LOOKUP[$i]{host}{$host};
+		} else {
+			if (!defined($LOOKUP[$i]{event}{$LOOKUP[$i]{name}})) {
+				@{$LOOKUP[$i]{event}{$LOOKUP[$i]{name}}{freqarray}} = @{$LOOKUP[$i]{freqarray}};
+				$LOOKUP[$i]{event}{$LOOKUP[$i]{name}}{nlast} = 0;
+			}
+			$freqref = $LOOKUP[$i]{event}{$LOOKUP[$i]{name}};
 		}
-		if (process_freq ($LOOKUP[$i]{freqtime}, $LOOKUP[$i]{host}{$host}{freqarray})) {
+
+		if (process_freq ($LOOKUP[$i]{freqtime}, $freqref->{freqarray})) {
 			if ((my $rate = $LOOKUP[$i]{nrate}) > 0) {
 				my $now = time;
 				syswrite (LOG, &$DBGTIME . " [$$] Verifying rate limit for $LOOKUP[$i]{name} ($i)\n") if ($DBGLOG);
-				next LOOKUP_LOOP if (($now - $LOOKUP[$i]{host}{$host}{nlast}) < $rate);
-				$LOOKUP[$i]{host}{$host}{nlast} = $now;
+				next LOOKUP_LOOP if (($now - $freqref->{nlast}) < $rate);
+				$freqref->{nlast} = $now;
 			}
 			syswrite (LOG, &$DBGTIME . " [$$] Sending alert for $LOOKUP[$i]{name} ($i)\n") if ($DBGLOG);
 			send_alert ($host, $LOOKUP[$i]{service}, $ERRORS{$LOOKUP[$i]{alert}}, "Event $evid ($TYPETEX{$pri}) from $source: $msg", $LOOKUP[$i]{substhost});
@@ -285,6 +296,8 @@ sub init_conf {
 		# All frequency items must be present, even if not used.
 		if (!defined ($config->{EvtItem}->{$_}->{Freq}) ||
 		    ref ($config->{EvtItem}->{$_}->{Freq}) ne 'HASH' ||
+		    !defined ($config->{EvtItem}->{$_}->{Freq}->{Perhost}) ||
+		    ref ($config->{EvtItem}->{$_}->{Freq}->{Perhost}) ||
 		    !defined ($config->{EvtItem}->{$_}->{Freq}->{Number}) ||
 		    ref ($config->{EvtItem}->{$_}->{Freq}->{Number}) ||
 		    !defined ($config->{EvtItem}->{$_}->{Freq}->{Time}) ||
@@ -296,8 +309,16 @@ sub init_conf {
 		}
 		# This is probably not required, but better be on the safe side...
 		if ($config->{EvtItem}->{$_}->{Freq}->{Number} < 1) {
-			syswrite (LOG, &$DBGTIME . " [$$] Frequency number must be greater or equal to 1\n") if ($DBGLOG);
-			do_exit("Frequency number must be greater or equal to 1");
+			syswrite (LOG, &$DBGTIME . " [$$] Frequency number for event item '$_' must be greater or equal to 1\n") if ($DBGLOG);
+			do_exit("Frequency number for event item '$_' must be greater or equal to 1");
+		}
+		if (lc($config->{EvtItem}->{$_}->{Freq}->{Perhost}) eq 'true') {
+			$config->{EvtItem}->{$_}->{Freq}->{Perhost} = 1;
+		} elsif (lc($config->{EvtItem}->{$_}->{Freq}->{Perhost}) eq 'false') {
+			$config->{EvtItem}->{$_}->{Freq}->{Perhost} = 0;
+		} else {
+			syswrite (LOG, &$DBGTIME . " [$$] Perhost Frequency for event item '$_' must be 'True' or 'False'\n") if ($DBGLOG);
+			do_exit("Perhost Frequency for event item '$_' must be 'True' or 'False'");
 		}
 
 		foreach my $item (('Include', 'Exclude')) {
@@ -362,6 +383,7 @@ sub init_conf {
 			if (defined ($config->{EvtItem}->{$evtitem}->{Hosts}));
 
 		# This is the occurrence counter default values...
+		$LOOKUP[$evtnum]{freqperhost} = $config->{EvtItem}->{$evtitem}->{Freq}->{Perhost};
 		$LOOKUP[$evtnum]{freqtime} = $config->{EvtItem}->{$evtitem}->{Freq}->{Time};
 		$LOOKUP[$evtnum]{freqarray} = [ map { 0 } 1 .. $config->{EvtItem}->{$evtitem}->{Freq}->{Number} ];
 
@@ -369,8 +391,9 @@ sub init_conf {
 		$LOOKUP[$evtnum]{nrate} = $config->{EvtItem}->{$evtitem}->{Freq}->{Rate};
 		$LOOKUP[$evtnum]{nlast} = 0;
 
-		# ... and host hash for storing per-host values
+		# ... and host/event hashes for storing per-host/event values
 		$LOOKUP[$evtnum]{host} = {};
+		$LOOKUP[$evtnum]{event} = {};
 
 		# Generate pre-compiled REs and lookups for include and exclude items
 		foreach my $itemtype (('Include', 'Exclude')) {
@@ -413,7 +436,7 @@ sub process_freq {
 	my $arrayref = shift;
 	my $now = time;
 
-	# We use a sortcut here to avoid walking twice the array
+	# We use a shortcut here to avoid walking twice the array
 	# NB: Since we use a shortcut the array could be 1 element shorter, but
 	#     it works, so...
 	if ($#{$arrayref} < 1) {
@@ -422,7 +445,7 @@ sub process_freq {
 	} elsif (($now - ${$arrayref}[1]) <= $freqtime) {
 		# NB: checked the 2nd position since we haven't shifted the array yet!
 		# We're up for an alert; reset the array...
-		@$arrayref = [ map { 0 } 0 .. $#{$arrayref} ];
+		@$arrayref = map { 0 } 0 .. $#{$arrayref};
 		# And notify
 		return 1;
 	} else {
