@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # check_perfmon  -  A Nagios plugin for fetching windows performance log data
-# v.1.1
+# v.1.2
 # Based on getlog.pl (by the same author) v.1.1
 #
 # This script reads Windows performance logs (normally saved to a samba share)
@@ -189,7 +189,18 @@ if ($counter =~ /^(.)/ && $1 ne $sep) {
 	$counter =~ s/\Q$sep/\\/g;
 }
 
+# Get the index...
 my $index = find_index ($counter, $header);
+
+# Substitute backslashes (\) with carets (^), or the separator used, to print
+# properly in Nagios.
+if ($sep eq '\\') {
+	$counter =~ s/\\/^/g;
+} else {
+	$counter =~ s/\\/$sep/g;
+}
+
+# Now check the results of the find_index call above
 $np->nagios_exit('UNKNOWN', "No matching index '$counter'")
 	unless (defined($index) && $index >= 0);
 
@@ -197,14 +208,6 @@ my $value = subst_col ($index, \$last);
 # Only check for definition; allow returning empty strings and zeros!
 $np->nagios_exit('UNKNOWN', "Column $index not found")
 	unless (defined($value));
-
-# Substitute backslashes (\) with carets (^), or the separator used, to avoid
-# shell escaping problems.
-if ($sep eq '\\') {
-	$counter =~ s/\\/^/g;
-} else {
-	$counter =~ s/\\/$sep/g;
-}
 
 # If we use perfdata, treat the value as a counter and return the average
 if (defined($perfdata)) {
