@@ -38,7 +38,7 @@ char *get_head(int log) {
 	int read_sz;
 	char *buf = NULL;
 	int buf_sz = 0;
-	char *tmp;
+	char *tmp = NULL;
 
 	/* Make sure we're at the beginning */
 	lseek(log, 0, SEEK_SET);
@@ -85,7 +85,7 @@ char *get_tail(int log) {
 	int read_sz;
 	char *buf = NULL;
 	int buf_sz = 0;
-	char *tmp1, *tmp2;
+	char *tmp1=NULL, *tmp2=NULL;
 	off_t length, start;
 	struct stat sb;
 
@@ -180,7 +180,7 @@ int find_index(const char *colname, char *line) {
  *       though...
  */
 char *subst_col(int colnum, char **lineref) {
-	char *col, *delim;
+	char *col=NULL, *delim;
 	int i;
 
 	for (i=0; i <= colnum; i++) {
@@ -225,7 +225,7 @@ int datediff(const char *datestr) {
 	char *tmp;
 	char dup[25];
 	int i, month, day, year, hour, min, sec;
-	time_t *now;
+	time_t *now=NULL;
 	struct tm *tmnow;
 
 	if (strlen(datestr) != 23)

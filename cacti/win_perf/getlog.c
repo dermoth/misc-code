@@ -41,6 +41,7 @@
 #include "getlog.h"
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
 #include <stdio.h>
@@ -119,7 +120,7 @@ int main(int argc, char **argv) {
 	}
 
 	if ((value = subst_col(idx, &last)) == NULL) {
-		fprintf(stderr, "Column '%s' not found!", idx);
+		fprintf(stderr, "Column '%i' not found!", idx);
 		exit(1);
 	}
 
