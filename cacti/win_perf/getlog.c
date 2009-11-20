@@ -67,6 +67,9 @@ int main(int argc, char **argv) {
 		perror("open");
 		exit(1);
 	}
+#ifdef MALLOC_FREE
+	free(log);
+#endif
 
 	if ((header = get_head(fd)) == NULL) {
 		fprintf(stderr, "Failed to read first line!\n");
