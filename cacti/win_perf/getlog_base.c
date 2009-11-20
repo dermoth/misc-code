@@ -44,7 +44,7 @@ char *get_head(int log) {
 	lseek(log, 0, SEEK_SET);
 
 	/* Loop until we get a newline */
-	while (read_sz = read(log, readbuf, READ_CHNK) > 0) {
+	while ((read_sz = read(log, readbuf, READ_CHNK)) > 0) {
 		if ((buf = realloc(buf, buf_sz+read_sz)) == NULL) {
 			fprintf(stderr, "malloc failed in get_head()\n");
 			exit(3);
@@ -53,8 +53,9 @@ char *get_head(int log) {
 		buf_sz += read_sz;
 
 		/* Terminate buf as a string if we reached end of line */
-    if ((tmp = memchr(buf, '\n', buf_sz)) != NULL) {
-		  if (tmp[-1] == '\r') tmp--;
+	if ((tmp = memchr(buf, '\n', buf_sz)) != NULL) {
+			if (tmp[-1] == '\r') tmp--;
+			//tmp++; /* keep newline?  */
 			tmp[0] = '\0';
 			break;
 		}
@@ -83,7 +84,6 @@ char *get_tail(int log) {
 	char readbuf[READ_CHNK];
 	int read_sz;
 	char *buf = NULL;
-	char *tmpbuf;
 	int buf_sz = 0;
 	char *tmp1, *tmp2;
 	off_t length, start;
@@ -109,34 +109,36 @@ char *get_tail(int log) {
 
 	/* Set our position and start reading */
 	lseek(log, start, SEEK_SET);
-	while (read_sz = read(log, readbuf, READ_CHNK)) {
+	while ((read_sz = read(log, readbuf, READ_CHNK)) > 0) {
 		if ((buf = realloc(buf, buf_sz+read_sz)) == NULL) {
-			fprintf(stderr, "malloc failed in get_head()\n");
+			fprintf(stderr, "malloc failed in get_tail()\n");
 			exit(3);
 		}
 
 		/* Prepend to buffer - straight memcpy() if memory don't overlap */
-		if (read_sz == READ_CHNK)
-			memcpy(buf, buf+READ_CHNK, buf_sz);
-		else
-			memmove(buf, buf+read_sz, buf_sz);
+		if (buf_sz)
+			memmove(buf+read_sz, buf, buf_sz);
 		memcpy(buf, readbuf, read_sz);
 		buf_sz += read_sz;
 
 		/* Terminate buf as a string if we got a full line */
-    if ((tmp1 = memchr(buf, '\n', buf_sz)) != NULL) {
-			if (tmp1 == buf+buf_sz) continue; /* last newline only */
+		if ((tmp1 = memchr(buf, '\n', buf_sz)) != NULL && tmp1 != buf+buf_sz-1) {
 
 			/* Make sure we got the last line */
-			while ((tmp2 = memchr(tmp1+1, '\n', buf_sz-(tmp1-buf-1))) != NULL) {
-				if (tmp2 == buf+buf_sz) continue;
-				tmp1 = tmp2;
+			while ((tmp2 = memchr(tmp1+1, '\n', buf_sz-(tmp1-buf)-1)) != NULL) {
+				if (tmp2 != buf+buf_sz-1) {
+					tmp1 = tmp2;
+					continue;
+				}
+				/* terminate tmp2 such as tmp1 becomes a string */
+				break;
 			}
-
-			/* terminate tmp2 such as tmp1 becomes a string */
-		  if (tmp2[-1] == '\r') tmp2--;
-			tmp2[0] = '\0';
-			break;
+			if (tmp2) {
+				if (tmp2[-1] == '\r') tmp2--;
+				tmp2[0] = '\0';
+				tmp1++; /* get past first '\n' */
+				break;
+			}
 		}
 
 		if (buf_sz >= MAX_READ) break; /* endless line? */
@@ -201,8 +203,13 @@ char *subst_col(int colnum, char **lineref) {
 		}
 		*lineref = delim + 1;
 
-		if (i == colnum) /* We're done, extract the current column */
+		if (i == colnum) {
+			/* We're done, extract the current column */
+			/* remove quotes... */
+			col++;
+			col[strlen(col)-1] = '\0';
 			break;
+		}
 #ifdef MALLOC_FREE
 		free(col);
 #else
