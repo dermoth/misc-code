@@ -123,7 +123,7 @@ int main(int argc, char **argv) {
 	}
 
 	if ((value = subst_col(idx, &last)) == NULL) {
-		fprintf(stderr, "Column '%i' not found!", idx);
+		fprintf(stderr, "Column '%i' not found!\n", idx);
 		exit(1);
 	}
 

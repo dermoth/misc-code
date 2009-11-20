@@ -188,21 +188,23 @@ char *subst_col(int colnum, char **lineref) {
 
 		if (delim == NULL) { /* this is the last column? */
 			col = strdup(*lineref);
-			/* FIXME Possible infinite loop is you leave data in there ?*/
-			//*lineref = NULL;
+			/* Infinite loop is you leave a pointer here */
+			*lineref = NULL;
 		} else {
 			col = malloc(delim-*lineref+1);
 			strncpy(col, *lineref, delim-*lineref);
 			col[delim-*lineref] = '\0';
 		}
-		/* Look for starting and ending double-quotes... FIXME: That was supposed to handle enclose comas */
-		if (col[0] != '"' || col[strlen(col)] != '"') {
+		/* Look for starting and ending double-quotes... FIXME: That was supposed to handle enclosed comas */
+		if (col[0] != '"' || col[strlen(col)-1] != '"') {
 			/* The field isn't properly delimited; try next comma and hope for the best */
 			if (!delim)
 				return NULL;
 		}
 		/* FIXME: what if delim is the last character */
-		*lineref = delim + 1;
+		if (delim) *lineref = delim + 1;
+		else return NULL;
+
 
 		if (i == colnum) {
 			/* We're done, extract the current column */
