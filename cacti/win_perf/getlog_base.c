@@ -180,46 +180,61 @@ int find_index(const char *colname, char *line) {
  *       though...
  */
 char *subst_col(int colnum, char **lineref) {
-	char *col=NULL, *delim;
-	int i;
+	char *col=NULL;
+	int i=0, pos=0, c;
+	int quotestate = 0;
 
-	for (i=0; i <= colnum; i++) {
-		delim = strchr(*lineref, ',');
+	/* We reached last counter on previour call, return NULL */
+	if (*lineref == NULL) return NULL;
 
-		if (delim == NULL) { /* this is the last column? */
-			col = strdup(*lineref);
-			/* Infinite loop is you leave a pointer here */
-			*lineref = NULL;
-		} else {
-			col = malloc(delim-*lineref+1);
-			strncpy(col, *lineref, delim-*lineref);
-			col[delim-*lineref] = '\0';
+	/* First column always start here */
+	if (colnum == 0) col = *lineref;
+
+	while ((c=lineref[0][pos++]) != '\0') {
+		switch (c){
+			case ',':
+				if (!quotestate) {
+					i++;
+					*lineref = *lineref + pos;
+					pos = 0;
+					break;
+				}
+			case '"':
+				quotestate ^= 1;
+				break;
+			default:
+				do {
+					c = lineref[0][pos++];
+				} while (c != '\0' && c != (quotestate ? '"' : ','));
+				pos--;
+				continue;
 		}
-		/* Look for starting and ending double-quotes... FIXME: That was supposed to handle enclosed comas */
-		if (col[0] != '"' || col[strlen(col)-1] != '"') {
-			/* The field isn't properly delimited; try next comma and hope for the best */
-			if (!delim)
-				return NULL;
-		}
-		/* FIXME: what if delim is the last character */
-		if (delim) *lineref = delim + 1;
-		else return NULL;
 
+		/* continue at field boundary */
+		if (c != ',') continue;
 
 		if (i == colnum) {
-			/* We're done, extract the current column */
-			/* remove quotes... */
-			col++;
-			col[strlen(col)-1] = '\0';
+			/* found start of column */
+			col = *lineref;
+		} else if (col) {
+			/* End of column, terminate */
+			lineref[0][pos-1] = '\0';
 			break;
 		}
-#ifdef MALLOC_FREE
-		free(col);
-#else
-		col = NULL;
-#endif
 	}
-	return col;
+
+	/* Not sure if this is needed, can't be too careful :) */
+	if (c == '\0') *lineref = NULL;
+
+	if (col) {
+		/* We're done, remove quotes... */
+		if (col[0] == '"' && col[strlen(col)-1] == '"') {
+			col++;
+			col[strlen(col)-1] = '\0';
+		}
+		return col;
+	}
+	return NULL;
 }
 
 /* Date string to time diff. Ex. string: "01/22/2008 07:49:19.798" */
