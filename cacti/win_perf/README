@@ -1,0 +1,54 @@
+=========================
+ Getlog - Windows CSV Performance Data Log Parser for Cacti
+ Version v.0.8
+
+This program pasrses Windows CSV perfmon logs and return the requested
+collumn in a format suitable for Cacti. This program has been designed
+with speed in mind.
+
+Author: Thomas Guyot-Sionnest <tguyot@gmail.com>
+
+
+COMPILING
+
+1. Review the settings in getlog.h
+
+2. Run:
+$ make CC=gcc CFLAGS="-Wall -O2" LDFLAGS="-static"
+
+
+USAGE
+
+  getlog <servername> <instance>
+  getlog <servername> list
+
+Ex: ./getlog SRV6 '\LogicalDisk(C:)\% Disk Time'
+    ./getlog SRV6 "\\LogicalDisk(C:)\\% Disk Time"
+
+Output: Cacti data format (or nothing). Errors goes to STDERR.
+
+The "list" parameter returns all counters available in a log file
+
+Log files should be saved under LOG_PATH and named "<hostname>.csv"
+Everything is CaSe-SenSITive!
+
+
+INSTALLING
+
+Just copy to your cacti/scripts directory and use is in "Data Input Methods"
+
+
+BUGS
+
+- MAX_AGE is not implemented yet (next version will)
+- Configuration is static (getlog.h)
+- That can't be all...
+
+
+COPYRIGHT
+
+This program is protected under the GNU General Public License v3. See
+the header serciomn of getlog.c for more details.
+
+Copyright 2009 Thomas Guyot-Sionnest <tguyot@gmail.com>
+

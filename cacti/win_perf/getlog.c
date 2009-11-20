@@ -2,7 +2,7 @@
 *
 * Getlog - Windows CSV Performance Data Log Parser for Cacti
 *
-* Version v.0.1
+* Version v.0.8
 *
 * License: GPL
 * Copyright (c) 2009 Thomas Guyot-Sionnest <tguyot@gmail.com>
