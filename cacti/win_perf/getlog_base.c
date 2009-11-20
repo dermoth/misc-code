@@ -55,7 +55,6 @@ char *get_head(int log) {
 		/* Terminate buf as a string if we reached end of line */
 	if ((tmp = memchr(buf, '\n', buf_sz)) != NULL) {
 			if (tmp[-1] == '\r') tmp--;
-			//tmp++; /* keep newline?  */
 			tmp[0] = '\0';
 			break;
 		}

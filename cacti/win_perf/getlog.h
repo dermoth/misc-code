@@ -30,7 +30,7 @@
 
 /* Define MALLOC_FREE if you want to free all dynamically allocated  memory.
  * Normally, the OS does a better job at is when the process exits */
-/* #define MALLOC_FREE */
+/* #define MALLOC_FREE */ /* BROKEN!! */
 
 
 /* ***** PROTOTYPES ***** */

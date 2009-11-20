@@ -42,6 +42,7 @@ BUGS
 
 - MAX_AGE is not implemented yet (next version will)
 - Configuration is static (getlog.h)
+- MALLOC_FREE is broken
 - That can't be all...
 
 
