@@ -1,6 +1,6 @@
 =========================
  Getlog - Windows CSV Performance Data Log Parser for Cacti
- Version v.0.8
+ Version v.0.9
 
 This program pasrses Windows CSV perfmon logs and return the requested
 collumn in a format suitable for Cacti. This program has been designed
@@ -40,7 +40,6 @@ Just copy to your cacti/scripts directory and use is in "Data Input Methods"
 
 BUGS
 
-- MAX_AGE is not implemented yet (next version will)
 - Configuration is static (getlog.h)
 - MALLOC_FREE is broken
 - That can't be all...

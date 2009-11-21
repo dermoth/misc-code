@@ -2,7 +2,7 @@
 *
 * Getlog - Windows CSV Performance Data Log Parser for Cacti
 *
-* Version v.0.8
+* Version v.0.9
 *
 * License: GPL
 * Copyright (c) 2009 Thomas Guyot-Sionnest <tguyot@gmail.com>
@@ -50,7 +50,7 @@
 int main(int argc, char **argv) {
 	char *log = NULL;
 	char *header, *last, *col, *datestr, *value;
-	int fd, idx;
+	int fd, idx, diff;
 
 	if (argc != 3) {
 		fprintf(stderr, "Usage: %s <servername> <instance>\n", argv[0]);
@@ -102,20 +102,20 @@ int main(int argc, char **argv) {
 
 	/* Check the date */
 	datestr = subst_col(0, &last);
-#if 0
 	if (MAX_AGE > 0) {
-		my $diff = datediff($datestr);
-		die ("Couldn't parse date string '$datestr'") unless (defined($diff));
-		if ($diff > $MAX_AGE) {
-			if ($STALL_CMD) {
-				/* Run STALL_CMD and exit, but don't block the Cacti poller! */
-				my $ret = fork;
-				system($STALL_CMD) if ($ret == 0);
-			}
-			exit;
+		if ((diff = datediff(datestr)) == -1) {
+			fprintf(stderr, "Couldn't parse date string '%s'", datestr);
+			exit(1);
+		}
+		if (diff > MAX_AGE) {
+#ifdef STALL_CMD
+			/* Run STALL_CMD and exit, but don't block the Cacti poller! */
+			if (fork() == 0)
+				system(STALL_CMD);
+#endif
+			exit(0);
 		}
 	}
-#endif
 
 	if ((idx = find_index(argv[2], header)) == -1) {
 		fprintf(stderr, "No matching index: '%s'\n", argv[2]);

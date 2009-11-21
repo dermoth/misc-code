@@ -242,12 +242,11 @@ int datediff(const char *datestr) {
 	char *tmp;
 	char dup[25];
 	int i, month, day, year, hour, min, sec;
-	time_t *now=NULL;
+	time_t now;
 	struct tm *tmnow;
 
 	if (strlen(datestr) != 23)
 		return -1;
-
 	strncpy(dup, datestr, 24);
 	dup[23] = dup[24] = '\0';
 	tmp = array[0] = dup;
@@ -269,8 +268,8 @@ int datediff(const char *datestr) {
 	min = myatoi(array[4]);
 	sec = myatoi(array[5]);
 
-	*now = time(NULL);
-	tmnow = localtime(now);
+	now = time(NULL);
+	tmnow = localtime(&now);
 
 	tmnow->tm_mon++;
 	tmnow->tm_year += 1900;
