@@ -85,6 +85,7 @@ char *get_tail(int log) {
 	char *buf = NULL;
 	int buf_sz = 0;
 	char *tmp1=NULL, *tmp2=NULL;
+	int c, pos=0;
 	off_t length, start;
 	struct stat sb;
 
@@ -114,30 +115,26 @@ char *get_tail(int log) {
 			exit(3);
 		}
 
-		/* Prepend to buffer - straight memcpy() if memory don't overlap */
+		/* Prepend to buffer */
 		if (buf_sz)
 			memmove(buf+read_sz, buf, buf_sz);
 		memcpy(buf, readbuf, read_sz);
 		buf_sz += read_sz;
 
 		/* Terminate buf as a string if we got a full line */
-		if ((tmp1 = memchr(buf, '\n', buf_sz)) != NULL && tmp1 != buf+buf_sz-1) {
-
-			/* Make sure we got the last line */
-			while ((tmp2 = memchr(tmp1+1, '\n', buf_sz-(tmp1-buf)-1)) != NULL) {
-				if (tmp2 != buf+buf_sz-1) {
-					tmp1 = tmp2;
-					continue;
-				}
-				/* terminate tmp2 such as tmp1 becomes a string */
-				break;
+		tmp1 = tmp2 = NULL;
+		pos = 0;
+		while ((c=buf[pos++]) != '\0') {
+			if (c == '\n') {
+				tmp1 = tmp2;
+				tmp2 = buf+pos-1;
 			}
-			if (tmp2) {
-				if (tmp2[-1] == '\r') tmp2--;
-				tmp2[0] = '\0';
-				tmp1++; /* get past first '\n' */
-				break;
-			}
+		}
+		if (tmp1) {
+			if (tmp2[-1] == '\r') tmp2--;
+			tmp2[0] = '\0';
+			tmp1++; /* get past first '\n' */
+			break;
 		}
 
 		if (buf_sz >= MAX_READ) break; /* endless line? */
