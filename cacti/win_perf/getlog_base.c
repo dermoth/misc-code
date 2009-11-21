@@ -144,6 +144,10 @@ char *get_tail(int log) {
 		if ((start -= READ_CHNK) < 0) break;
 		lseek(log, start, SEEK_SET);
 	}
+	if (read_sz == -1) {
+		perror("read");
+		exit(3);
+	}
 
 	/* Return the last line if we got one */
 	if (tmp1 && tmp2 && tmp2 - tmp1 > 0) {

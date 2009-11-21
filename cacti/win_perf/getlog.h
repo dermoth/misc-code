@@ -10,7 +10,7 @@
  * to 0 to avoid this check. */
 #define MAX_AGE 120 /* 2 minutes */
 
-/* This is a script that will be run if the log is stall for more than 
+/* This is a script that will be run if the log is stall for more than
  * MAX_AGE seconds (It's up to you to make good use of this). Have no
  * effect if MAX_AGE isn't positive. The original idea was to have a Nagios
  * event handler restart the counter when stall (Implement it the way you
