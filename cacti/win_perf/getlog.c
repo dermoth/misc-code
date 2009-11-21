@@ -104,9 +104,10 @@ int main(int argc, char **argv) {
 	datestr = subst_col(0, &last);
 	if (MAX_AGE > 0) {
 		if ((diff = datediff(datestr)) == -1) {
-			fprintf(stderr, "Couldn't parse date string '%s'", datestr);
+			fprintf(stderr, "Couldn't parse date string '%s'\n", datestr);
 			exit(1);
 		}
+
 		if (diff > MAX_AGE) {
 #ifdef STALL_CMD
 			/* Run STALL_CMD and exit, but don't block the Cacti poller! */

@@ -241,9 +241,8 @@ int datediff(const char *datestr) {
 	char *array[7];
 	char *tmp;
 	char dup[25];
-	int i, month, day, year, hour, min, sec;
-	time_t now;
-	struct tm *tmnow;
+	int i;
+	struct tm tmstamp;
 
 	if (strlen(datestr) != 23)
 		return -1;
@@ -261,29 +260,14 @@ int datediff(const char *datestr) {
 		array[i] = tmp;
 	}
 
-	month = myatoi(array[0]);
-	day = myatoi(array[1]);
-	year = myatoi(array[2]);
-	hour = myatoi(array[3]);
-	min = myatoi(array[4]);
-	sec = myatoi(array[5]);
+	tmstamp.tm_mon = myatoi(array[0]) - 1;
+	tmstamp.tm_mday = myatoi(array[1]);
+	tmstamp.tm_year = myatoi(array[2]) - 1900;
+	tmstamp.tm_hour = myatoi(array[3]);
+	tmstamp.tm_min = myatoi(array[4]);
+	tmstamp.tm_sec = myatoi(array[5]);
 
-	now = time(NULL);
-	tmnow = localtime(&now);
-
-	tmnow->tm_mon++;
-	tmnow->tm_year += 1900;
-
-	/* Seconds out from Google Calculator. Those are rounded averages; we
-	 * don't care about precision as we really shouldn't need to exceed one
-	 * day. We care about correctness though (i.e. same date last month is
-	 * NOT correct). */
-	return  (tmnow->tm_year-year)*31556926
-	       +(tmnow->tm_mon-month)*2629744
-	       +(tmnow->tm_mday-day)*86400
-	       +(tmnow->tm_hour-hour)*3600
-	       +(tmnow->tm_min-min)*60
-	       +(tmnow->tm_sec-sec);
+	return (int)difftime (time(NULL), mktime(&tmstamp));
 }
 
 /* like atoi with error checking */
