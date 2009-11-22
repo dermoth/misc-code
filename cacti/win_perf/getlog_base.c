@@ -173,8 +173,9 @@ int find_index(const char *colname, char *line) {
 	int i = 0;
 
 	while (line && (col = subst_col(0, &line)) != NULL) {
+		if (strlen(col) < 3) return -1;
 		/* Skip over the server name (\\name) */
-		col = strchr(col+3, '\\');
+		col = strchr(col+2, '\\');
 		if (strcmp(col, colname) == 0) return i;
 		i++;
 	}

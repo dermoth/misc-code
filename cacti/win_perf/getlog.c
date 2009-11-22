@@ -123,7 +123,8 @@ int main(int argc, char **argv) {
 #ifdef STALL_CMD
 			/* Run STALL_CMD and exit, but don't block the Cacti poller! */
 			if (fork() == 0)
-				system(STALL_CMD);
+				/* Use idx to prevent warnings */
+				idx = system(STALL_CMD);
 #endif
 			exit(0);
 		}
