@@ -15,5 +15,5 @@ getlog: $(objects)
 .PHONY: clean
 clean:
 	rm -f *.o
-	rm getlog
+	rm -f getlog
 

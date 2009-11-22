@@ -39,6 +39,7 @@
 *****************************************************************************/
 
 #include "getlog.h"
+#include "getlog_base.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -46,6 +47,12 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+/* Error handler for getlog_base */
+void getlog_exit(char *message) {
+	fprintf(stderr, "%s\n", message);
+	exit(1);
+}
 
 int main(int argc, char **argv) {
 	char *log = NULL;
@@ -58,6 +65,10 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
+	/* Set externs to be used by getlog_base */
+	read_chnk = READ_CHNK;
+	max_read = MAX_READ;
+	getlog_err = &getlog_exit;
 
 	/* Open the log and get the first and last lines */
 	log = malloc(strlen(LOG_PATH)+strlen(argv[1])+6);

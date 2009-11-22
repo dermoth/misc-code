@@ -28,20 +28,6 @@
 /* Maximum buffered read size (Will stop reading lines longer than this!) */
 #define MAX_READ 1024 * 512 /* 512KiB */
 
-/* Define MALLOC_FREE if you want to free all dynamically allocated  memory.
- * Normally, the OS does a better job at is when the process exits */
-/* #define MALLOC_FREE */ /* BROKEN!! */
-
-
-/* ***** PROTOTYPES ***** */
-
-char *get_head(int);
-char *get_tail(int);
-int find_index(const char *, char *);
-char *subst_col(int, char **);
-int datediff(const char*);
-int myatoi(const char*);
-
 
 /* End of getlog.h */
 

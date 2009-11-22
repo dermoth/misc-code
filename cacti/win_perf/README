@@ -38,6 +38,16 @@ INSTALLING
 Just copy to your cacti/scripts directory and use is in "Data Input Methods"
 
 
+TIMEZONES
+
+Since the times in CSV logs do not specify any timezone, it is assumed to
+be local time. If you need to work with different timezone you can set
+the TZ environment variable to specify the local server's timezone.
+
+Ex:
+$ TZ=US/Pacific ./getlog SERVER '\Paging File(_Total)\% Usage'
+
+
 BUGS
 
 - Configuration is static (getlog.h)

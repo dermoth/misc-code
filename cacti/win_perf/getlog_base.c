@@ -20,7 +20,9 @@
 *
 *****************************************************************************/
 
-#include "getlog.h"
+#define GETLOG_BASE
+
+#include "getlog_base.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -32,9 +34,16 @@
 #include <errno.h>
 
 
+unsigned int read_chnk = 0;
+unsigned int max_read = 0;
+void (*getlog_err)(char *) = NULL;
+
+/* Used for printing out errors strerror_r */
+char errbuf[MAX_ERRSTR] = {'\0'};
+
 /* Get the first line of the file... easy stuff */
 char *get_head(int log) {
-	char readbuf[READ_CHNK];
+	char readbuf[read_chnk];
 	int read_sz;
 	char *buf = NULL;
 	int buf_sz = 0;
@@ -44,11 +53,10 @@ char *get_head(int log) {
 	lseek(log, 0, SEEK_SET);
 
 	/* Loop until we get a newline */
-	while ((read_sz = read(log, readbuf, READ_CHNK)) > 0) {
-		if ((buf = realloc(buf, buf_sz+read_sz)) == NULL) {
-			fprintf(stderr, "malloc failed in get_head()\n");
-			exit(3);
-		}
+	while ((read_sz = read(log, readbuf, read_chnk)) > 0) {
+		if ((buf = realloc(buf, buf_sz+read_sz)) == NULL)
+			getlog_err("malloc failed in get_head()");
+
 		memcpy(buf+buf_sz, readbuf, read_sz);
 		buf_sz += read_sz;
 
@@ -58,11 +66,12 @@ char *get_head(int log) {
 			tmp[0] = '\0';
 			break;
 		}
-		if (buf_sz >= MAX_READ) break; /* endless line? */
+		if (buf_sz >= max_read) break; /* endless line? */
 	}
 	if (read_sz == -1) {
-		perror("read");
-		exit(3);
+		strcpy(errbuf, "read: ");
+		strerror_r(errno, errbuf+6, MAX_ERRSTR-6);
+		getlog_err(errbuf);
 	}
 
 	/* return whatever line de got, or NULL */
@@ -80,7 +89,7 @@ char *get_head(int log) {
 /* Get the last line of the file, reading backwards to make this quick on
  * large log files. */
 char *get_tail(int log) {
-	char readbuf[READ_CHNK];
+	char readbuf[read_chnk];
 	int read_sz;
 	char *buf = NULL;
 	int buf_sz = 0;
@@ -90,30 +99,29 @@ char *get_tail(int log) {
 	struct stat sb;
 
 	if (fstat(log, &sb) == -1) {
-		perror("fstat");
-		exit(3);
+		strcpy(errbuf, "fstat: ");
+		strerror_r(errno, errbuf+7, MAX_ERRSTR-7);
+		getlog_err(errbuf);
 	}
 	length = sb.st_size; /* Size in bytes */
 
-	/* Try to read up to READ_CHNK bytes at time, but make sure we read at
+	/* Try to read up to read_chnk bytes at time, but make sure we read at
 	 * 512-bytes boundaries. THIS IS TRICKY, don't change this unless you
 	 * know what you're doing! */
 	start = (length / 512) * 512;
-	if (start >= READ_CHNK && start == length) {
-		start -= READ_CHNK;
-	} else if (start >= READ_CHNK) {
-		start -= READ_CHNK - 512;
+	if (start >= read_chnk && start == length) {
+		start -= read_chnk;
+	} else if (start >= read_chnk) {
+		start -= read_chnk - 512;
 	} else {
 		start = 0;
 	}
 
 	/* Set our position and start reading */
 	lseek(log, start, SEEK_SET);
-	while ((read_sz = read(log, readbuf, READ_CHNK)) > 0) {
-		if ((buf = realloc(buf, buf_sz+read_sz)) == NULL) {
-			fprintf(stderr, "malloc failed in get_tail()\n");
-			exit(3);
-		}
+	while ((read_sz = read(log, readbuf, read_chnk)) > 0) {
+		if ((buf = realloc(buf, buf_sz+read_sz)) == NULL)
+			getlog_err("malloc failed in get_tail()");
 
 		/* Prepend to buffer */
 		if (buf_sz)
@@ -137,13 +145,14 @@ char *get_tail(int log) {
 			break;
 		}
 
-		if (buf_sz >= MAX_READ) break; /* endless line? */
-		if ((start -= READ_CHNK) < 0) break;
+		if (buf_sz >= max_read) break; /* endless line? */
+		if ((start -= read_chnk) < 0) break;
 		lseek(log, start, SEEK_SET);
 	}
 	if (read_sz == -1) {
-		perror("read");
-		exit(3);
+		strcpy(errbuf, "read: ");
+		strerror_r(errno, errbuf+6, MAX_ERRSTR-6);
+		getlog_err(errbuf);
 	}
 
 	/* Return the last line if we got one */
@@ -280,18 +289,16 @@ int myatoi(const char *num) {
 	val = strtol(num, &endptr, 10);
 
 	if ((errno == ERANGE && (val == LONG_MAX || val == LONG_MIN)) || (errno != 0 && val == 0)) {
-		perror("strtol");
-		exit(3);
-	}
-	if (val >= INT_MAX || val < 0) {
-		fprintf(stderr, "Number our of bounds\n");
-		exit(3);
+		strcpy(errbuf, "strtol: ");
+		strerror_r(errno, errbuf+8, MAX_ERRSTR-8);
+		getlog_err(errbuf);
 	}
 
-	if (endptr == num) {
-		fprintf(stderr, "No digits were found\n");
-		exit(EXIT_FAILURE);
-	}
+	if (val >= INT_MAX || val < 0)
+		getlog_err("Number is of bounds");
+
+	if (endptr == num)
+		getlog_err("No digits were found");
 
 	return (int)val;
 }
