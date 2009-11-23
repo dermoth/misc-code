@@ -13,9 +13,9 @@
 /* This is a script that will be run if the log is stall for more than
  * MAX_AGE seconds (It's up to you to make good use of this). Have no
  * effect if MAX_AGE isn't positive. The original idea was to have a Nagios
- * event handler restart the counter when stall (Implement it the way you
- * like though). */
-#define STALL_CMD "/usr/local/nagios/libexec/eventhandlers/notify_stall_counter $ARGV[0]"
+ * event handler restart the counter when stall. The command will be run
+ * with the same arguments as this program */
+#define STALL_CMD "/usr/local/nagios/libexec/eventhandlers/notify_stall_counter"
 
 /* This is the maximum read size for each read. Optimal performance can be
  * obtained by setting this to the smallest number higher than your usual

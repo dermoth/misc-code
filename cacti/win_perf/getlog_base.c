@@ -296,7 +296,7 @@ int myatoi(const char *num) {
 	}
 
 	if (val >= INT_MAX || val < 0)
-		getlog_err("Number is of bounds");
+		getlog_err("Number is out of bounds");
 
 	if (endptr == num)
 		getlog_err("No digits were found");

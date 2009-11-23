@@ -54,7 +54,7 @@ void getlog_exit(char *message) {
 	exit(1);
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv, char **envp) {
 	char *log = NULL;
 	char *header, *last, *col, *datestr, *value;
 	int fd, idx, diff;
@@ -113,6 +113,7 @@ int main(int argc, char **argv) {
 
 	/* Check the date */
 	datestr = subst_col(0, &last);
+#ifdef MAX_AGE
 	if (MAX_AGE > 0) {
 		if ((diff = datediff(datestr)) == -1) {
 			fprintf(stderr, "Couldn't parse date string '%s'\n", datestr);
@@ -122,13 +123,17 @@ int main(int argc, char **argv) {
 		if (diff > MAX_AGE) {
 #ifdef STALL_CMD
 			/* Run STALL_CMD and exit, but don't block the Cacti poller! */
-			if (fork() == 0)
-				/* Use idx to prevent warnings */
-				idx = system(STALL_CMD);
+			if (fork() == 0) {
+				char *newargv[] = { STALL_CMD, argv[1], argv[2] };
+				execve(STALL_CMD, newargv, envp);
+				perror("execve");
+				exit(1);
+			}
 #endif
 			exit(0);
 		}
 	}
+#endif
 
 	if ((idx = find_index(argv[2], header)) == -1) {
 		fprintf(stderr, "No matching index: '%s'\n", argv[2]);
