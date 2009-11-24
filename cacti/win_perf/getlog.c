@@ -100,7 +100,7 @@ int main(int argc, char **argv, char **envp) {
 		while ((col = subst_col(0, &header)) != NULL) {
 			col+= 2;
 			if ((col = strchr(col, '\\')) == NULL) {
-				fprintf(stderr, "Invalid collumn header\n");
+				fprintf(stderr, "Invalid column header\n");
 				exit(1);
 			}
 			printf("%s\n", col);
