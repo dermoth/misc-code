@@ -232,7 +232,7 @@ if (defined($perfdata)) {
 	} else {
 		$np->nagios_exit('UNKNOWN', 'Couldn\'t parse last counter (normal on first run)');
 	}
-}		
+}
 
 warn ("Retrieved value: $value") if ($verbose);
 
