@@ -1,0 +1,202 @@
+#!/usr/bin/perl
+# check_https_workers  -  Plugin for checking httpd workers trough the scoreboard page
+# v.0.9
+#
+# This script fetches the httpd scoreboard and verifies the number of busy
+# and idle workers.
+#
+# Copyright (C) 2010 Thomas Guyot-Sionnest <tguyot@gmail.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+#
+
+use strict;
+use warnings;
+use vars qw($PROGNAME $VERSION);
+use LWP::Simple;
+use Nagios::Plugin;
+
+$PROGNAME = 'check_httpd_workers';
+$VERSION = '0.9';
+
+my $np = Nagios::Plugin->new(
+	usage => "Usage: %s -H <hostname> [ -u <scoreboard_page> ] [ -s ]\n"
+	    . "   [ -w <threshold> ] [ -c <threshold> ]\n"
+	    . "   [ -b <threshold> ] [ -B <threshold> ]\n"
+	    . '   [ -i <threshold> ] [ -I <threshold> ]',
+	version => $VERSION,
+	plugin  => 'check_'.$PROGNAME,
+	shortname => uc($PROGNAME),
+	blurb => 'Checks the number of workers from the httpd scoreboard.',
+	extra => "\nNotes:\n"
+	   . "The thresholds are not always as obvious as they might look. If you want to\n"
+	   . "check for at least 10 idle workers, you have to explicitely specify the range\n"
+	   . "as the number alone means 'up to N workers'. i.e.:\n"
+	   . '  check_httpd_workers -H myhost -i 10:',
+	timeout => 10,
+);
+
+$np->add_arg(
+	spec => 'hostname|H=s',
+	help => '-H, --hostname=<hostname>',
+	required => 1,
+);
+
+$np->add_arg(
+	spec => 'url|u=s',
+	help => "-u, --url=<scoreboard_page>\n"
+	   . '   Url used for the scoreboard page - default: "/server-status"',
+  default => '/server-status',
+	required => 0,
+);
+
+$np->add_arg(
+	spec => 'ssl|s+',
+	help => "-s, --ssl\n"
+	   . '   Use HTTPS',
+	required => 0,
+);
+
+$np->add_arg(
+	spec => 'warning|w=s',
+	help => "-w, --warning=THRESHOLD\n"
+	   . "   Warning threshold for total number of workers (Busy + Idle). See:\n"
+	   . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
+	   . "   for the threshold format. If -P, --perfdata is specified, thresholds apply\n"
+	   . '   to the generated average.',
+	required => 0,
+);
+
+$np->add_arg(
+	spec => 'critical|c=s',
+	help => "-c, --critical=THRESHOLD\n"
+	   . "   Critical threshold for total number of workers (Busy + Idle). See\n"
+	   . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
+	   . "   for the threshold format. If -P, --perfdata is specified, thresholds apply\n"
+	   . '   to the generated average.',
+	required => 0,
+);
+
+$np->add_arg(
+	spec => 'wbusy|b=s',
+	help => "-b, --wbusy=THRESHOLD\n"
+	   . "   Warning threshold for number of Busy workers. See:\n"
+	   . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
+	   . "   for the threshold format. If -P, --perfdata is specified, thresholds apply\n"
+	   . '   to the generated average.',
+	required => 0,
+);
+
+$np->add_arg(
+	spec => 'cbusy|B=s',
+	help => "-B, --cbusy=THRESHOLD\n"
+	   . "   Critical threshold for number of Busy workers. See\n"
+	   . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
+	   . "   for the threshold format. If -P, --perfdata is specified, thresholds apply\n"
+	   . '   to the generated average.',
+	required => 0,
+);
+
+$np->add_arg(
+	spec => 'widle|i=s',
+	help => "-i, --widle=THRESHOLD\n"
+	   . "   Warning threshold for number of Idle workers. See:\n"
+	   . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
+	   . "   for the threshold format. If -P, --perfdata is specified, thresholds apply\n"
+	   . '   to the generated average.',
+	required => 0,
+);
+
+$np->add_arg(
+	spec => 'cidle|I=s',
+	help => "-I, --cidle=THRESHOLD\n"
+	   . "   Critical threshold for number of Idle workers. See\n"
+	   . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
+	   . "   for the threshold format. If -P, --perfdata is specified, thresholds apply\n"
+	   . '   to the generated average.',
+	required => 0,
+);
+
+$np->getopts;
+
+my $dbg = $np->opts->verbose;
+
+my $url = ($np->opts->ssl ? 'https://' : 'http://');
+$url .= $np->opts->hostname . $np->opts->url . '?auto';
+
+print STDERR "Scoreboard url: $url\n" if ($dbg);
+
+$np->set_thresholds(
+    warning => $np->opts->wbusy,
+    critical => $np->opts->cbusy,
+);
+my $th_busy = $np->threshold();
+
+$np->set_thresholds(
+    warning => $np->opts->widle,
+    critical => $np->opts->cidle,
+);
+my $th_idle = $np->threshold();
+
+$np->set_thresholds(
+    warning => $np->opts->warning,
+    critical => $np->opts->critical,
+);
+my $th_total = $np->threshold();
+
+# Get scoreboard
+my $scoreboard = get($url) || $np->nagios_exit('UNKNOWN', "Couldn't get scoreboard");
+
+print STDERR "scoreboard:\n$scoreboard\n" if ($dbg >2);
+
+# Parse workers
+my ($w_busy, $w_idle);
+for (split(/\n/, $scoreboard)) {
+	$w_busy = $1 if (m/^BusyWorkers:\s*(\d+)/);
+  $w_idle = $1 if (m/^IdleWorkers:\s*(\d+)/);
+}
+if (!defined($w_busy) || !defined($w_idle)) {
+	 $np->nagios_exit('UNKNOWN', "Couldn't parse scoreboard");
+}
+my $w_total = $w_busy+$w_idle;
+
+print STDERR "Workers (Busy/Idle/Total): $w_busy, $w_idle, $w_total\n" if ($dbg);
+
+# Add perfdata
+
+$np->add_perfdata(
+	label => 'busy',
+	value => $w_busy,
+	threshold => $th_busy,
+);
+
+$np->add_perfdata(
+	label => 'idle',
+	value => $w_idle,
+	threshold => $th_idle,
+);
+
+$np->add_perfdata(
+	label => 'total',
+	value => $w_total,
+	threshold => $th_total,
+);
+
+# check thresholds and exit...
+my $res = $th_total->get_status($w_total);
+$res = $np->max_state_alt($res, $th_busy->get_status($w_busy));
+$res = $np->max_state_alt($res, $th_idle->get_status($w_idle));
+$np->nagios_exit($res, "Busy: $w_busy, Idle: $w_idle, Total: $w_total");
+
