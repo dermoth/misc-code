@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # check_https_workers  -  Plugin for checking httpd workers trough the scoreboard page
-# v.0.9
+# v.1.0
 #
 # This script fetches the httpd scoreboard and verifies the number of busy
 # and idle workers.
@@ -25,11 +25,11 @@
 use strict;
 use warnings;
 use vars qw($PROGNAME $VERSION);
-use LWP::Simple;
+use LWP::UserAgent;
 use Nagios::Plugin;
 
 $PROGNAME = 'check_httpd_workers';
-$VERSION = '0.9';
+$VERSION = '1.0';
 
 my $np = Nagios::Plugin->new(
 	usage => "Usage: %s -H <hostname> [ -u <scoreboard_page> ] [ -s ]\n"
@@ -157,7 +157,14 @@ $np->set_thresholds(
 my $th_total = $np->threshold();
 
 # Get scoreboard
-my $scoreboard = get($url) || $np->nagios_exit('UNKNOWN', "Couldn't get scoreboard");
+my $ua = LWP::UserAgent->new;
+$ua->timeout($np->opts->timeout);
+$ua->env_proxy;
+my $resp = $ua->get($url);
+if (!$resp->is_success) {
+	$np->nagios_exit('UNKNOWN', $resp->status_line);
+}
+my $scoreboard = $resp->decoded_content;
 
 print STDERR "scoreboard:\n$scoreboard\n" if ($dbg >2);
 
