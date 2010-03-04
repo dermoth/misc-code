@@ -36,7 +36,7 @@ use vars qw($PROGNAME $VERSION %PRMAP $PREFIX $user $pass $soap);
 #use Data::Dumper;
 
 $PROGNAME = 'check_akamai_bandwidth';
-$VERSION = '1.1';
+$VERSION = '1.2';
 
 # Mapping of pefixes with multipliers
 %PRMAP = (
@@ -153,8 +153,9 @@ my $res = $soap->getPasswordExpirationDate();
 checkres($soap);
 
 my $expiry = gmdate($res->paramsall)->epoch() - time();
-if ($expiry < 60*60*24*30) {
-	if ($expiry < 60*60*24*15) {
+# It looks like password expiration can be negative; shall we care if we can still fetch data?
+if ($expiry >= 0 && $expiry < 60*60*24*2) {
+	if ($expiry < 60*60*24*1) {
 		$np_res = CRITICAL;
 	} else {
 		$np_res = WARNING;
