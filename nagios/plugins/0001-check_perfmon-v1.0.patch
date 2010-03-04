@@ -1,0 +1,1370 @@
+From eca434cb9a9161989768630ff8866d5e41108151 Mon Sep 17 00:00:00 2001
+From: Thomas Guyot-Sionnest <dermoth@aei.ca>
+Date: Mon, 23 Nov 2009 06:59:16 -0500
+Subject: [PATCH] check_perfmon v1.0
+
+This is a complete rewrite of check_perfmon[.pl] in C
+---
+ .gitignore                |    1 +
+ lib/tests/test_utils.c    |  111 ++++++++++++-
+ lib/utils_base.c          |   92 ++++++++++
+ lib/utils_base.h          |   24 +++
+ plugins/Makefile.am       |   10 +-
+ plugins/check_perfmon.c   |  427 +++++++++++++++++++++++++++++++++++++++++++++
+ plugins/getlog_base.c     |  306 ++++++++++++++++++++++++++++++++
+ plugins/getlog_base.h     |   60 +++++++
+ plugins/t/check_perfmon.t |  205 ++++++++++++++++++++++
+ 9 files changed, 1232 insertions(+), 4 deletions(-)
+ create mode 100644 plugins/check_perfmon.c
+ create mode 100755 plugins/getlog_base.c
+ create mode 100755 plugins/getlog_base.h
+ create mode 100644 plugins/t/check_perfmon.t
+
+diff --git a/.gitignore b/.gitignore
+index 867ec6a..9c086dc 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -149,6 +149,7 @@ NP-VERSION-FILE
+ /plugins/check_ntp_time
+ /plugins/check_nwstat
+ /plugins/check_overcr
++/plugins/check_perfmon
+ /plugins/check_pgsql
+ /plugins/check_ping
+ /plugins/check_pop
+diff --git a/lib/tests/test_utils.c b/lib/tests/test_utils.c
+index 3a45944..6d5e611 100644
+--- a/lib/tests/test_utils.c
++++ b/lib/tests/test_utils.c
+@@ -29,7 +29,7 @@ main (int argc, char **argv)
+ 	thresholds *thresholds = NULL;
+ 	int	rc;
+ 
+-	plan_tests(81+23);
++	plan_tests(81+23+41);
+ 
+ 	range = parse_range_string("6");
+ 	ok( range != NULL, "'6' is valid range");
+@@ -251,5 +251,114 @@ main (int argc, char **argv)
+ 	test=np_extract_ntpvar("", "foo");
+ 	ok(!test, "Empty string return NULL");
+ 
++	/* performance data extraction tests (32) */
++
++	int iperf;
++
++	rc = np_iperfdata("time=1232949522;; last=0;; counter=0c;1;10", "time", &iperf);
++	ok(rc == NP_PERFDATA_OK, "int perfdata rc 1");
++	ok(iperf == 1232949522, "int perfdata result 1");
++
++	rc = np_iperfdata("time=1232949522;; last=0;; counter=0c;1;10", "last", &iperf);
++	ok(rc == NP_PERFDATA_OK, "int perfdata rc 2");
++	ok(iperf == 0, "int perfdata result 2");
++
++	rc = np_iperfdata("time=1232949522;; last=19;; counter=0c;1;10", "last", &iperf);
++	ok(rc == NP_PERFDATA_OK, "int perfdata rc 3");
++	ok(iperf == 19, "int perfdata result 3");
++
++	rc = np_iperfdata("time=1232949522;; last=-123;; counter=0c;1;10", "last", &iperf);
++	ok(rc == NP_PERFDATA_OK, "int perfdata rc 4");
++	ok(iperf == -123, "int perfdata result 4");
++
++	rc = np_iperfdata("counter=0c;1;10", "last", &iperf);
++	ok(rc == NP_PERFDATA_EPARSE, "int perfdata not present 1");
++
++	rc = np_iperfdata("time=1232949522;; last= counter=0c;1;10", "last", &iperf);
++	ok(rc == NP_PERFDATA_ECONV, "int perfdata error 1");
++
++	rc = np_iperfdata("time=1232949522 last=NaN;; counter=0c;1;10", "last", &iperf);
++	ok(rc == NP_PERFDATA_ECONV, "int perfdata error 2");
++
++	rc = np_iperfdata("time=1232949522;; last=680564733841876926926749214863536422912;; counter=0c;1;10", "last", &iperf); /* overflow - 2^129 */
++	ok(rc == NP_PERFDATA_ERANGE, "int perfdata error 3");
++
++	long lperf;
++
++	rc = np_lperfdata("time=1232949522;; last=819;; counter=0c;1;10", "last", &lperf);
++	ok(rc == NP_PERFDATA_OK, "long perfdata rc 1");
++	ok(lperf == 819, "long perfdata result 1");
++
++	rc = np_lperfdata("time=1232949522;; last=-4819;; counter=0c;1;10", "last", &lperf);
++	ok(rc == NP_PERFDATA_OK, "long perfdata rc 2");
++	ok(lperf == -4819, "long perfdata result 2");
++
++	rc = np_lperfdata("time=1232949522;; last=0;; counter=0c;1;10", "last", &lperf);
++	ok(rc == NP_PERFDATA_OK, "long perfdata rc 3");
++	ok(lperf == 0, "long perfdata result 3");
++
++	rc = np_lperfdata("counter=0c;1;10", "last", &lperf);
++	ok(rc == NP_PERFDATA_EPARSE, "long perfdata not present 1");
++
++	rc = np_lperfdata("time=1232949522;; last= counter=0c;1;10", "last", &lperf);
++	ok(rc == NP_PERFDATA_ECONV, "long perfdata error 1");
++
++	rc = np_lperfdata("time=1232949522;; last=680564733841876926926749214863536422912;; counter=0c;1;10", "last", &lperf); /* overflow - 2^129 */
++	ok(rc == NP_PERFDATA_ERANGE, "long perfdata error 2");
++
++	skip(9, "np_llperfdata not compiled");
++#if 0
++	long long llperf;
++
++	rc = np_llperfdata("time=1232949522;; last=281474976710656;; counter=0c;1;10", "last", &llperf);
++	ok(rc == NP_PERFDATA_OK, "long long perfdata rc 1");
++	ok(llperf == 281474976710656, "long long perfdata result 1");
++
++	rc = np_llperfdata("time=1232949522;; last=-8796093022208;; counter=0c;1;10", "last", &llperf);
++	ok(rc == NP_PERFDATA_OK, "long long perfdata rc 2");
++	ok(llperf == -8796093022208, "long perfdata result 2");
++
++	rc = np_llperfdata("time=1232949522;; last=0;; counter=0c;1;10", "last", &llperf);
++	ok(rc == NP_PERFDATA_OK, "long long perfdata rc 3");
++	ok(llperf == 0, "long long perfdata result 3");
++
++	rc = np_llperfdata("counter=0c;1;10", "last", &llperf);
++	ok(rc == NP_PERFDATA_EPARSE, "long long perfdata not present 1");
++
++	rc = np_llperfdata("time=1232949522;; last= counter=0c;1;10", "last", &llperf);
++	ok(rc == NP_PERFDATA_ECONV, "long long perfdata error 1");
++
++	rc = np_llperfdata("time=1232949522;; last=680564733841876926926749214863536422912;; counter=0c;1;10", "last", &llperf); /* overflow - 2^129 */
++	ok(rc == NP_PERFDATA_ERANGE, "long long perfdata error 2");
++#endif
++
++	double dperf;
++
++	rc = np_dperfdata("time=1232949522;; last=6819;; counter=0c;1;10", "last", &dperf);
++	ok(rc == NP_PERFDATA_OK, "double perfdata rc 1");
++	ok(dperf == 6819, "double perfdata result 1");
++
++	rc = np_dperfdata("time=1232949522;; last=-8619;; counter=0c;1;10", "last", &dperf);
++	ok(rc == NP_PERFDATA_OK, "double perfdata rc 2");
++	ok(dperf == -8619, "double perfdata result 2");
++
++	rc = np_dperfdata("time=1232949522;; last=6.5235;; counter=0c;1;10", "last", &dperf);
++	ok(rc == NP_PERFDATA_OK, "double perfdata rc 3");
++	ok(dperf == 6.5235, "double perfdata result 3");
++
++	rc = np_dperfdata("time=1232949522;; last=0;; counter=0c;1;10", "last", &dperf);
++	ok(rc == NP_PERFDATA_OK, "double perfdata rc 4");
++	ok(dperf == 0, "double perfdata result 4");
++
++	rc = np_dperfdata("counter=0c;1;10", "last", &dperf);
++	ok(rc == NP_PERFDATA_EPARSE, "double perfdata not present 1");
++
++	rc = np_dperfdata("time=1232949522;; last= counter=0c;1;10", "last", &dperf);
++	ok(rc == NP_PERFDATA_ECONV, "double perfdata error 1");
++
++	rc = np_dperfdata("time=1232949522;; last=680564733841876926926749214863536422912e43125234;; counter=0c;1;10", "last", &lperf); /* overflow - some random huge exponential number */
++	ok(rc == NP_PERFDATA_ERANGE, "double perfdata error 2");
++
++
+ 	return exit_status();
+ }
+diff --git a/lib/utils_base.c b/lib/utils_base.c
+index 4303e15..7308baf 100644
+--- a/lib/utils_base.c
++++ b/lib/utils_base.c
+@@ -310,3 +310,95 @@ char *np_extract_value(const char *varlist, const char *name, char sep) {
+ 	return value;
+ }
+ 
++/*
++ * Given a performance data string and name, extracts the value and return it
++ * as {int, long, long long, double, float} trough passed parameter. Return 0
++ * for success, 1 if it couldn't return a value or -1 if it couldn't parse the
++ * string.
++ */
++int np_iperfdata (const char *perfstr, const char *perfname, int *value) {
++	char *str, *endptr=NULL;
++	long int valtmp;
++
++	str = np_extract_perfvar(perfstr, perfname);
++	if (!str)
++		return NP_PERFDATA_EPARSE; /* parse error */
++
++	errno = 0;
++
++	valtmp = strtol(str, &endptr, 10);
++	if (str == endptr)
++		return NP_PERFDATA_ECONV; /* No conversion performed */
++	else if (errno == ERANGE || valtmp > INT_MAX || valtmp < INT_MIN)
++		return NP_PERFDATA_ERANGE;
++
++	*value = (int)valtmp;
++
++	return NP_PERFDATA_OK;
++}
++
++int np_lperfdata (const char *perfstr, const char *perfname, long *value) {
++	char *str, *endptr=NULL;
++	long int valtmp;
++
++	str = np_extract_perfvar(perfstr, perfname);
++	if (!str)
++		return NP_PERFDATA_EPARSE; /* parse error */
++
++	errno = 0;
++
++	valtmp = strtol(str, &endptr, 10);
++	if (str == endptr)
++		return NP_PERFDATA_ECONV; /* No conversion performed */
++	else if (errno == ERANGE)
++		return NP_PERFDATA_ERANGE;
++
++	*value = valtmp;
++
++	return NP_PERFDATA_OK;
++}
++
++#if 0 /* Would require the strtoll gnulib module */
++int np_llperfdata (const char *perfstr, const char *perfname, long long *value) {
++	char *str, *endptr=NULL;
++	long int valtmp;
++
++	str = np_extract_perfvar(perfstr, perfname);
++	if (!str)
++		return NP_PERFDATA_EPARSE; /* parse error */
++
++	errno = 0;
++
++	valtmp = strtoll(str, &endptr, 10);
++	if (str == endptr)
++		return NP_PERFDATA_ECONV; /* No conversion performed */
++	else if (errno == ERANGE)
++		return NP_PERFDATA_ERANGE;
++
++	*value = valtmp;
++
++	return NP_PERFDATA_OK;
++}
++#endif
++
++int np_dperfdata (const char *perfstr, const char *perfname, double *value) {
++	char *str, *endptr=NULL;
++	double valtmp;
++
++	str = np_extract_perfvar(perfstr, perfname);
++	if (!str)
++		return NP_PERFDATA_EPARSE; /* parse error */
++
++	errno = 0;
++
++	valtmp = strtod(str, &endptr);
++	if (str == endptr)
++		return NP_PERFDATA_ECONV; /* No conversion performed */
++	else if (errno == ERANGE)
++		return NP_PERFDATA_ERANGE;
++
++	*value = valtmp;
++
++	return NP_PERFDATA_OK;
++}
++
+diff --git a/lib/utils_base.h b/lib/utils_base.h
+index 49e40a6..7c0a715 100644
+--- a/lib/utils_base.h
++++ b/lib/utils_base.h
+@@ -67,4 +67,28 @@ char *np_extract_value(const char*, const char*, char);
+  */
+ #define np_extract_ntpvar(l, n) np_extract_value(l, n, ',')
+ 
++/*
++ * Same as np_extract_value with separator suitable for performance data
++ * (space)
++ */
++#define np_extract_perfvar(l, n) np_extract_value(l, n, ' ')
++
++/*
++ * Given a performance data string and name, extracts the value and return it
++ * as {int, long int, double} trough passed parameter. Return
++ * NP_PERFDATA_OK (0) for success, NP_PERFDATA_EPARSE if it couldn't
++ * return a value, NP_PERFDATA_ECONV if it couldn't parse the string or
++ * NP_PERFDATA_ERANGE if conversion would cause an overflow.
++ */
++
++#define NP_PERFDATA_OK 0
++#define NP_PERFDATA_EPARSE 1
++#define NP_PERFDATA_ECONV 2
++#define NP_PERFDATA_ERANGE 3
++
++int np_iperfdata (const char *, const char *, int *);
++int np_lperfdata (const char *, const char *, long int *);
++/* int np_llperfdata (const char *, const char *, long long int *); */
++int np_dperfdata (const char *, const char *, double *);
++
+ #endif /* _UTILS_BASE_ */
+diff --git a/plugins/Makefile.am b/plugins/Makefile.am
+index 4570fb7..bf213ac 100644
+--- a/plugins/Makefile.am
++++ b/plugins/Makefile.am
+@@ -26,9 +26,9 @@ MATHLIBS = @MATHLIBS@
+ #AM_CFLAGS = -Wall
+ 
+ libexec_PROGRAMS = check_apt check_cluster check_disk check_dummy check_http check_load \
+-	check_mrtg check_mrtgtraf check_ntp check_ntp_peer check_nwstat check_overcr check_ping \
++	check_mrtg check_mrtgtraf check_ntp check_ntp_peer check_nwstat check_overcr check_perfmon \
+ 	check_real check_smtp check_ssh check_tcp check_time check_ntp_time \
+-	check_ups check_users negate \
++	check_ping check_ups check_users negate \
+ 	urlize @EXTRAS@
+ 
+ check_tcp_programs = check_ftp check_imap check_nntp check_pop \
+@@ -40,7 +40,7 @@ EXTRA_PROGRAMS = check_mysql check_radius check_pgsql check_snmp check_hpjd \
+ 	check_procs check_mysql_query check_apt
+ 
+ EXTRA_DIST = t utils.c netutils.c sslutils.c popen.c utils.h netutils.h \
+-	popen.h common.h runcmd.c runcmd.h
++	popen.h common.h runcmd.c runcmd.h getlog_base.h getlog_base.c
+ 
+ PLUGINHDRS = common.h
+ 
+@@ -88,6 +88,7 @@ check_ntp_LDADD = $(NETLIBS) $(MATHLIBS)
+ check_ntp_peer_LDADD = $(NETLIBS) $(MATHLIBS)
+ check_nwstat_LDADD = $(NETLIBS)
+ check_overcr_LDADD = $(NETLIBS)
++check_perfmon_LDADD = $(BASEOBJS) getlog_base.o
+ check_pgsql_LDADD = $(NETLIBS) $(PGLIBS)
+ check_ping_LDADD = $(NETLIBS) popen.o
+ check_procs_LDADD = $(BASEOBJS)
+@@ -130,6 +131,7 @@ check_ntp_DEPENDENCIES = check_ntp.c $(NETOBJS) $(DEPLIBS)
+ check_ntp_peer_DEPENDENCIES = check_ntp_peer.c $(NETOBJS) $(DEPLIBS)
+ check_nwstat_DEPENDENCIES = check_nwstat.c $(NETOBJS) $(DEPLIBS)
+ check_overcr_DEPENDENCIES = check_overcr.c $(NETOBJS) $(DEPLIBS)
++check_perfmon_DEPENDENCIES = check_perfmon.c $(BASEOBJS) getlog_base.o $(DEPLIBS)
+ check_pgsql_DEPENDENCIES = check_pgsql.c $(NETOBJS)  $(DEPLIBS)
+ check_ping_DEPENDENCIES = check_ping.c $(NETOBJS) popen.o $(DEPLIBS)
+ check_procs_DEPENDENCIES = check_procs.c $(BASEOBJS) popen.o $(DEPLIBS)
+@@ -160,6 +162,8 @@ utils.o: utils.c utils.h $(PLUGINHDRS)
+ netutils.o: netutils.c netutils.h $(PLUGINHDRS)
+ sslutils.o: sslutils.c netutils.h $(PLUGINHDRS)
+ 
++getlog_base.o: getlog_base.c getlog_base.h $(PLUGINHDRS)
++
+ all-local: $(check_tcp_programs)
+ 
+ $(check_tcp_programs): check_tcp
+diff --git a/plugins/check_perfmon.c b/plugins/check_perfmon.c
+new file mode 100644
+index 0000000..1310a05
+--- /dev/null
++++ b/plugins/check_perfmon.c
+@@ -0,0 +1,427 @@
++/*****************************************************************************
++* 
++* check_perfmon.c - A Nagios plugin for fetching windows performance log data
++*
++* License: GPL
++* Copyright (c) 2009 Thomas Guyot-Sionnest <tguyot@gmail.com>
++*
++* This program is free software: you can redistribute it and/or modify
++* it under the terms of the GNU General Public License as published by
++* the Free Software Foundation, either version 3 of the License, or
++* (at your option) any later version.
++*
++* This program is distributed in the hope that it will be useful,
++* but WITHOUT ANY WARRANTY; without even the implied warranty of
++* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++* GNU General Public License for more details.
++*
++* You should have received a copy of the GNU General Public License
++* along with this program.  If not, see <http://www.gnu.org/licenses/>.
++*
++*
++*****************************************************************************/
++
++const char *progname = "check_perfmon";
++const char *copyright = "2009";
++const char *email = "tguyot@gmail.com";
++/* This is meant to be concatenated with NP_VERSION */
++const char *version = "1.0/nagios-plugins-v";
++
++#include "common.h"
++#include "utils.h"
++#include "utils_base.h"
++#include "getlog_base.h"
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++
++#ifndef NP_GETLOG_READ_CHNK
++#define NP_GETLOG_READ_CHNK 512 * 2 /* 1024 bytes */
++#endif
++#ifndef NP_GETLOG_MAX_READ
++#define NP_GETLOG_MAX_READ 1024 * 512 /* 512KiB */
++#endif
++
++/* Own prototypes */
++void getlog_exit(char *);
++void perfmon_exit(char *message, char *errstr);
++int process_arguments(int, char **);
++void print_help (void);
++void print_usage (void);
++
++/* Global variables */
++char *np_version = NULL;
++char *hostname = NULL;
++char *logdir = NULL;
++char *counter = NULL;
++char *perfdata_str = NULL;
++int perminute = 0;
++int max_age = 0;
++char *warn_threshold = NULL;
++char *crit_threshold = NULL;
++
++int verbose=0;
++
++
++
++int
++main(int argc, char **argv)
++{
++	char *log = NULL;
++	char *header, *last, *datestr, *value;
++	char *perfdata_line = NULL;
++	char *tmp = NULL;
++	int result = STATE_UNKNOWN;
++	int fd, index, diff, last_ts;
++	double dvalue, last_value;
++	char sep = '\\';
++	thresholds *thresholds = NULL;
++	struct timeval tv;
++
++	setlocale (LC_ALL, "");
++	bindtextdomain (PACKAGE, LOCALEDIR);
++	textdomain (PACKAGE);
++
++	asprintf(&np_version, "%s%s", version, NP_VERSION);
++
++	/* Parse extra opts if any */
++	argv=np_extra_opts(&argc, argv, progname);
++
++	if(process_arguments(argc,argv)==ERROR)
++		usage(_("Could not parse arguments"));
++
++	/* Initialize the thresholds */
++	set_thresholds(&thresholds, warn_threshold, crit_threshold);
++	if(verbose)
++		print_thresholds(progname, thresholds);
++
++	/* Set externs to be used by getlog_base */
++	read_chnk = NP_GETLOG_READ_CHNK;
++	max_read = NP_GETLOG_MAX_READ;
++	getlog_err = &getlog_exit;
++
++	/* Open the log and get the first and last lines */
++	log = malloc(strlen(logdir)+strlen(hostname)+6);
++	sprintf(log, "%s/%s.csv", logdir, hostname);
++
++	if ((fd = open(log, O_RDONLY)) == -1)
++		perfmon_exit(_("Error opening log file"), strerror(errno));
++
++	if ((header = get_head(fd)) == NULL)
++		perfmon_exit(_("Failed to read first log line"), NULL);
++
++	if ((last = get_tail(fd)) == NULL)
++		perfmon_exit(_("Failed to read last log line"), NULL);
++
++	close(fd);
++
++	/* Strip the first column (we'll do the same to get the date field) */
++	subst_col(0, &header);
++
++	if (strcmp(counter, "list") == 0) {
++		printf("Available counters:\n");
++		while ((tmp = subst_col(0, &header)) != NULL) {
++			tmp+= 2;
++			if ((tmp = strchr(tmp, '\\')) == NULL)
++				perfmon_exit(_("Invalid column header"), NULL);
++
++			printf("%s\n", tmp);
++		}
++		exit(STATE_OK);
++	}
++
++	/* Check the date diff */
++	datestr = subst_col(0, &last);
++	if (verbose) printf("last timestamp: %s\n", datestr);
++	if (max_age > 0) {
++		if ((diff = datediff(datestr)) == -1)
++			perfmon_exit(_("Couldn't parse date string"), datestr);
++
++		if (verbose) printf("checking if %i > %i\n", diff, max_age);
++		if (diff > max_age) {
++			asprintf(&tmp, _("Data too old (%i seconds)"), diff);
++			perfmon_exit(tmp, NULL);
++		}
++	}
++
++	/*If the first character is not backslash, assume it's the separator and
++	 * substitute the counter accordingly */
++	if (strlen(counter) && counter[0] != sep) {
++		sep = counter[0];
++		tmp = counter;
++		while (*tmp != '\0') {
++			if (*tmp == sep) *tmp = '\\';
++			tmp++;
++		}
++	}
++
++	/* Get the index... */
++	index = find_index(counter, header);
++	if (verbose) printf("index: %i\n", index);
++
++	/* Substitute backslashes (\) with carets (^) or the separator used, to print
++	 * properly in Nagios. */
++	if (sep == '\\')
++		sep = '^';
++
++	tmp = counter;
++	while (*tmp != '\0') {
++		if (*tmp == '\\') *tmp = sep;
++		tmp++;
++	}
++
++	/* Now check the results of the find_index call above */
++	if (index == -1) {
++		asprintf(&tmp, _("No matching index '%s'"), counter);
++		perfmon_exit(tmp, NULL);
++	}
++
++	/* then get the column */
++	if ((value = subst_col(index, &last)) == NULL) {
++		asprintf(&tmp, _("Column %i not found"), index);
++		perfmon_exit(tmp, NULL);
++	}
++	if (verbose) printf("value: %s\n", value);
++
++	if (!is_numeric(value))
++		perfmon_exit(_("Value is not numeric"), value);
++	dvalue = strtod(value, NULL);
++
++	/* If we use perfdata, treat the value as a counter and return the average */
++	perfdata_line = strdup("|");
++	if (perfdata_str) {
++		if (gettimeofday(&tv, NULL) == -1)
++			perfmon_exit("gettimeofday", strerror(errno));
++
++		asprintf(&perfdata_line, "%s %s", perfdata_line,
++		         perfdata("time", tv.tv_sec, "", FALSE, 0, FALSE, 0, FALSE, 0, FALSE, 0));
++		asprintf(&perfdata_line, "%s %s", perfdata_line,
++		         fperfdata("last", dvalue, "", FALSE, 0, FALSE, 0, FALSE, 0, FALSE, 0));
++
++		if (verbose)
++			printf("Parsing perfdata string .%s.\n", perfdata_str);
++
++		if (np_iperfdata(perfdata_str, "time", &last_ts) != NP_PERFDATA_OK ||
++		    np_dperfdata(perfdata_str, "last", &last_value) != NP_PERFDATA_OK) {
++			printf("PERFMON UNKNOWN: %s%s\n", _("Couldn't parse last counter (normal on first run)"), perfdata_line);
++			exit(STATE_UNKNOWN);
++		}
++
++		/* Can't divide by 0 */
++		if (tv.tv_sec == last_ts) {
++			printf("PERFMON UNKNOWN: %s%s\n", _("Last and current times are the same"), perfdata_line);
++			exit(STATE_UNKNOWN);
++		}
++
++		dvalue = (dvalue - last_value) / (tv.tv_sec - last_ts);
++		if (perminute) dvalue *= 60;
++	}
++
++	if (verbose)
++		printf("Retrieved value: %.10e\n", dvalue);
++
++	/* Add perfdata */
++	asprintf(&perfdata_line, "%s %s", perfdata_line,
++	         fperfdata("counter", dvalue, "c",
++	                   warn_threshold ? TRUE : FALSE, warn_threshold ? thresholds->warning->end : 0,
++	                   crit_threshold ? TRUE : FALSE, crit_threshold ? thresholds->critical->end : 0,
++	                   FALSE, 0, FALSE, 0));
++
++	result = get_status(dvalue, thresholds);
++	asprintf(&value, "%.2f", dvalue);
++	/* Truncate the string of there' no decimal */
++	if (strlen(value) >= 4 && strcmp(&value[strlen(value)-3], ".00") == 0)
++		value[strlen(value)-3] = '\0';
++	printf("PERFMON %s: %s: %s%s\n", state_text(result), counter, value, perfdata_line);
++	exit(result);
++
++}
++
++
++
++/* Error handler for getlog_base */
++void
++getlog_exit(char *errstr)
++{
++	perfmon_exit(_("Perfmon log file error"), errstr);
++}
++
++/* General error handler */
++void
++perfmon_exit(char *message, char *errstr)
++{
++
++	if (errstr)
++		printf("PERFMON UNKNOWN: %s: %s\n", message, errstr);
++	else
++		printf("PERFMON UNKNOWN: %s\n", message);
++
++  exit(STATE_UNKNOWN);
++}
++
++
++int
++process_arguments(int argc, char **argv)
++{
++	int c;
++	int option=0;
++	static struct option longopts[]= {
++		{"hostname",  required_argument, 0,'H'},
++		{"logdir",    required_argument, 0,'L'},
++		{"counter",   required_argument, 0,'C'},
++		{"warning",   required_argument, 0,'w'},
++		{"critical",  required_argument, 0,'c'},
++		{"perfdata",  required_argument, 0,'P'},
++		{"maxage",    required_argument, 0,'M'},
++		{"perminute", no_argument,       0,'m'},
++		{"verbose",   no_argument,       0,'v'},
++		{"version",   no_argument,       0,'V'},
++		{"help",      no_argument,       0,'h'},
++		{0,0,0,0}
++	};
++
++	/* no options were supplied */
++	if(argc<2)
++		return ERROR;
++
++	while(1) {
++
++		c = getopt_long(argc, argv, "hvVH:L:C:w:c:P:M:m", longopts, &option);
++
++		if (c==-1 || c==EOF || c==1)
++			break;
++
++		switch(c) {
++
++		case 'H': /* Hostname (log file basename) */
++			hostname = optarg;
++			break;
++
++		case 'L': /* Log directory (<logdir>/<hostname>.csv) */
++			logdir = optarg;
++			break;
++
++		case 'C': /* Counter */
++			counter = optarg;
++			break;
++
++		case 'w': /* Warning Thresholds */
++			warn_threshold = optarg;
++			break;
++
++		case 'c': /* Critical Thresholds */
++			crit_threshold = optarg;
++			break;
++
++		case 'P': /* Performance data (state retention) */
++			perfdata_str = optarg;
++			break;
++
++		case 'M': /* Max age */
++			if (!is_intnonneg(optarg))
++				usage2(_("max_age must be a positive integer"), optarg);
++			else
++				max_age = atoi(optarg);
++			break;
++
++		case 'm': /* Make average data per-minute */
++			perminute++;
++			break;
++
++		case 'V': /* version */
++			print_revision(progname, np_version);
++			exit(STATE_OK);
++			break;
++
++		case 'h': /* help */
++			print_help();
++			exit(STATE_UNKNOWN);
++			break;
++
++		case 'v': /* verbose */
++			verbose++;
++			break;
++
++		default:
++			return STATE_UNKNOWN;
++			break;
++		}
++	}
++
++	if (hostname == NULL)
++		usage("hostname Required");
++	if (logdir == NULL)
++		usage("logdir required");
++	if (counter == NULL)
++		usage("counter required");
++
++	return OK;
++}
++
++void
++print_help(void)
++{
++	print_revision(progname, np_version);
++	printf ("Copyright (c) 2009 Thomas Guyot-Sionnest (tguyot@gmail.com)\n\n");
++
++	printf("   %s\n", _("Checks a Windows Performance log in CSV format. The file path is constructed as"));
++	printf("   %s\n",_("<log_dir>/<hostname>.csv, case-sensitive."));
++	printf("\n\n");
++
++	print_usage();
++
++	printf("\n");
++	printf("%s\n", _("Options:"));
++	printf(_(UT_EXTRA_OPTS));
++	printf(" %s\n", "-H, --hostname=<hostname>");
++	printf("    %s\n", _("Hostname to check (Log file base name)"));
++	printf(" %s\n", "-L, --logdir=<log_directory>");
++	printf("    %s\n", _("Directory location for log file names"));
++	printf(" %s\n", "-C, --counter=<counter>|list");
++	printf("    %s\n", _("Performance counter name. Use 'list' to get a list of available counters."));
++	printf("    %s\n", _("If the counter do not begin by a backslash (\\) the first character will be"));
++	printf("    %s\n", _("used as the separator (every occurrence of it will be replaced by a"));
++	printf("    %s\n", _("backslash). The separator used will be printed in output. If the separator"));
++	printf("    %s\n", _("is a backslash, it will always be replaced with a caret (^)."));
++	printf(" %s\n", "-w, --warning=THRESHOLD");
++	printf("    %s\n", _("Warning threshold for the counter"));
++	printf(" %s\n", "-c, --critical=THRESHOLD");
++	printf("    %s\n", _("Critical threshold for the counter"));
++	printf(" %s\n", "-P, --perfdata=<string>");
++	printf("    %s\n", _("Pass the current counter value and timestamp as additional performance data"));
++	printf("    %s\n", _("and use it to get the 1-second average during the interval. You should pass"));
++	printf("    %s\n", _("'$SERVICEPERFDATA$' as argument of this option (Don't forget to quote it!)."));
++	printf(" %s\n", "-m, --perminute");
++	printf("    %s\n", _("Only effective with -P, --perfdata; make the average per-minute. Also"));
++	printf("    %s\n", _("affects thresholds (They will be against the per-minute average)."));
++	printf(" %s\n", "-M, --maxage=<max_age>");
++	printf("    %s\n", _("Maximum age in seconds of the last CSV entry for the data to be considered"));
++	printf("    %s\n", _("valid, after which the plugin will return UNKNOWN."));
++	printf("    %s\n", _("Default is no checking (0)"));
++
++	printf(_(UT_VERBOSE));
++
++	printf("\n");
++	printf("%s\n", _("Notes:"));
++	printf(_(UT_THRESHOLDS_NOTES));
++#ifdef NP_EXTRA_OPTS
++	printf("\n");
++	printf(_(UT_EXTRA_OPTS_NOTES));
++#endif
++
++	printf("\n");
++	printf(_(UT_SUPPORT));
++}
++
++
++void
++print_usage(void)
++{
++
++	printf(_("Usage:"));
++	printf(" %s -H <hostname> -L <log_directory> -C <counter> | list\n", progname);
++	printf("   [ -w <threshold> ] [ -c <threshold> ]  [ -M <max_age> ]\n");
++	printf("   [ -P <perfdata> ] [ -m ]\n");
++
++}
++
+diff --git a/plugins/getlog_base.c b/plugins/getlog_base.c
+new file mode 100755
+index 0000000..ca16af4
+--- /dev/null
++++ b/plugins/getlog_base.c
+@@ -0,0 +1,306 @@
++/*****************************************************************************
++*
++* Getlog base library
++*
++* License: GPL
++* Copyright (c) 2009 Thomas Guyot-Sionnest <tguyot@gmail.com>
++*
++* This program is free software: you can redistribute it and/or modify
++* it under the terms of the GNU General Public License as published by
++* the Free Software Foundation, either version 3 of the License, or
++* (at your option) any later version.
++*
++* This program is distributed in the hope that it will be useful,
++* but WITHOUT ANY WARRANTY; without even the implied warranty of
++* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++* GNU General Public License for more details.
++*
++* You should have received a copy of the GNU General Public License
++* along with this program.  If not, see <http://www.gnu.org/licenses/>.
++*
++*****************************************************************************/
++
++#define GETLOG_BASE
++
++#include "getlog_base.h"
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#include <string.h>
++#include <limits.h>
++#include <time.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <errno.h>
++
++
++unsigned int read_chnk = 0;
++unsigned int max_read = 0;
++void (*getlog_err)(char *) = NULL;
++
++/* Used for printing out errors strerror_r */
++char errbuf[MAX_ERRSTR] = {'\0'};
++
++/* Get the first line of the file... easy stuff */
++char *get_head(int log) {
++	char readbuf[read_chnk];
++	int read_sz;
++	char *buf = NULL;
++	int buf_sz = 0;
++	char *tmp = NULL;
++
++	/* Make sure we're at the beginning */
++	lseek(log, 0, SEEK_SET);
++
++	/* Loop until we get a newline */
++	while ((read_sz = read(log, readbuf, read_chnk)) > 0) {
++		if ((buf = realloc(buf, buf_sz+read_sz)) == NULL)
++			getlog_err("malloc failed in get_head()");
++
++		memcpy(buf+buf_sz, readbuf, read_sz);
++		buf_sz += read_sz;
++
++		/* Terminate buf as a string if we reached end of line */
++	if ((tmp = memchr(buf, '\n', buf_sz)) != NULL) {
++			if (tmp[-1] == '\r') tmp--;
++			tmp[0] = '\0';
++			break;
++		}
++		if (buf_sz >= max_read) break; /* endless line? */
++	}
++	if (read_sz == -1) {
++		strcpy(errbuf, "read: ");
++		strerror_r(errno, errbuf+6, MAX_ERRSTR-6);
++		getlog_err(errbuf);
++	}
++
++	/* return whatever line de got, or NULL */
++	if (tmp) {
++#ifdef MALLOC_FREE
++		tmp = strdup(buf);
++		free(buf);
++		buf = tmp;
++#endif
++		return strdup(buf);
++	}
++	return NULL;
++}
++
++/* Get the last line of the file, reading backwards to make this quick on
++ * large log files. */
++char *get_tail(int log) {
++	char readbuf[read_chnk];
++	int read_sz;
++	char *buf = NULL;
++	int buf_sz = 0;
++	char *tmp1=NULL, *tmp2=NULL;
++	int c, pos=0;
++	off_t length, start;
++	struct stat sb;
++
++	if (fstat(log, &sb) == -1) {
++		strcpy(errbuf, "fstat: ");
++		strerror_r(errno, errbuf+7, MAX_ERRSTR-7);
++		getlog_err(errbuf);
++	}
++	length = sb.st_size; /* Size in bytes */
++
++	/* Try to read up to read_chnk bytes at time, but make sure we read at
++	 * 512-bytes boundaries. THIS IS TRICKY, don't change this unless you
++	 * know what you're doing! */
++	start = (length / 512) * 512;
++	if (start >= read_chnk && start == length) {
++		start -= read_chnk;
++	} else if (start >= read_chnk) {
++		start -= read_chnk - 512;
++	} else {
++		start = 0;
++	}
++
++	/* Set our position and start reading */
++	lseek(log, start, SEEK_SET);
++	while ((read_sz = read(log, readbuf, read_chnk)) > 0) {
++		if ((buf = realloc(buf, buf_sz+read_sz)) == NULL)
++			getlog_err("malloc failed in get_tail()");
++
++		/* Prepend to buffer */
++		if (buf_sz)
++			memmove(buf+read_sz, buf, buf_sz);
++		memcpy(buf, readbuf, read_sz);
++		buf_sz += read_sz;
++
++		/* Terminate buf as a string if we got a full line */
++		tmp1 = tmp2 = NULL;
++		pos = 0;
++		while ((c=buf[pos++]) != '\0') {
++			if (c == '\n') {
++				tmp1 = tmp2;
++				tmp2 = buf+pos-1;
++			}
++		}
++		if (tmp1) {
++			if (tmp2[-1] == '\r') tmp2--;
++			tmp2[0] = '\0';
++			tmp1++; /* get past first '\n' */
++			break;
++		}
++
++		if (buf_sz >= max_read) break; /* endless line? */
++		if ((start -= read_chnk) < 0) break;
++		lseek(log, start, SEEK_SET);
++	}
++	if (read_sz == -1) {
++		strcpy(errbuf, "read: ");
++		strerror_r(errno, errbuf+6, MAX_ERRSTR-6);
++		getlog_err(errbuf);
++	}
++
++	/* Return the last line if we got one */
++	if (tmp1 && tmp2 && tmp2 - tmp1 > 0) {
++#ifdef MALLOC_FREE
++		tmp2 = strdup(tmp1);
++		free(buf);
++		tmp1 = tmp2;
++#endif
++		return strdup(tmp1);
++	}
++	return NULL;
++}
++
++/* Return position of index `colname` on `line`. */
++int find_index(const char *colname, char *line) {
++	char *col;
++	int i = 0;
++
++	while (line && (col = subst_col(0, &line)) != NULL) {
++		if (strlen(col) < 3) return -1;
++		/* Skip over the server name (\\name) */
++		col = strchr(col+2, '\\');
++		if (strcmp(col, colname) == 0) return i;
++		i++;
++	}
++	return -1;
++}
++
++/*
++ * Fetch the column indicated by colnum and remove the scanned part from
++ * lineref (this allow faster scanning by find_index() ).
++ * NOTE: CSV does not require delimiters on numeric values; but since Windows
++ *       doesn't do that anyways it's not supported here. Could be easy to add
++ *       though...
++ */
++char *subst_col(int colnum, char **lineref) {
++	char *col=NULL;
++	int i=0, pos=0, c;
++	int quotestate = 0;
++
++	/* We reached last counter on previour call, return NULL */
++	if (*lineref == NULL) return NULL;
++
++	/* First column always start here */
++	if (colnum == 0) col = *lineref;
++
++	while ((c=lineref[0][pos++]) != '\0') {
++		switch (c){
++			case ',':
++				if (!quotestate) {
++					i++;
++					*lineref = *lineref + pos;
++					pos = 0;
++					break;
++				}
++			case '"':
++				quotestate ^= 1;
++				break;
++			default:
++				do {
++					c = lineref[0][pos++];
++				} while (c != '\0' && c != (quotestate ? '"' : ','));
++				pos--;
++				continue;
++		}
++
++		/* continue at field boundary */
++		if (c != ',') continue;
++
++		if (i == colnum) {
++			/* found start of column */
++			col = *lineref;
++		} else if (col) {
++			/* End of column, terminate */
++			lineref[0][pos-1] = '\0';
++			break;
++		}
++	}
++
++	/* Not sure if this is needed, can't be too careful :) */
++	if (c == '\0') *lineref = NULL;
++
++	if (col) {
++		/* We're done, remove quotes... */
++		if (col[0] == '"' && col[strlen(col)-1] == '"') {
++			col++;
++			col[strlen(col)-1] = '\0';
++		}
++		return col;
++	}
++	return NULL;
++}
++
++/* Date string to time diff. Ex. string: "01/22/2008 07:49:19.798" */
++int datediff(const char *datestr) {
++	char *array[7];
++	char *tmp;
++	char dup[25];
++	int i;
++	struct tm tmstamp;
++
++	if (strlen(datestr) != 23)
++		return -1;
++	strncpy(dup, datestr, 24);
++	dup[23] = dup[24] = '\0';
++	tmp = array[0] = dup;
++
++	/* Loop over the string and replace separators with NULLs */
++	for (i=1; i<=6; i++) {
++		if ((tmp = strpbrk(tmp, "/ :.")) == NULL)
++			return -1;
++
++		tmp[0] = '\0';
++		tmp++;
++		array[i] = tmp;
++	}
++
++	tmstamp.tm_mon = myatoi(array[0]) - 1;
++	tmstamp.tm_mday = myatoi(array[1]);
++	tmstamp.tm_year = myatoi(array[2]) - 1900;
++	tmstamp.tm_hour = myatoi(array[3]);
++	tmstamp.tm_min = myatoi(array[4]);
++	tmstamp.tm_sec = myatoi(array[5]);
++
++	return (int)difftime (time(NULL), mktime(&tmstamp));
++}
++
++/* like atoi with error checking */
++int myatoi(const char *num) {
++	char *endptr;
++	long val;
++
++	errno = 0;
++	val = strtol(num, &endptr, 10);
++
++	if ((errno == ERANGE && (val == LONG_MAX || val == LONG_MIN)) || (errno != 0 && val == 0)) {
++		strcpy(errbuf, "strtol: ");
++		strerror_r(errno, errbuf+8, MAX_ERRSTR-8);
++		getlog_err(errbuf);
++	}
++
++	if (val >= INT_MAX || val < 0)
++		getlog_err("Number is out of bounds");
++
++	if (endptr == num)
++		getlog_err("No digits were found");
++
++	return (int)val;
++}
++
+diff --git a/plugins/getlog_base.h b/plugins/getlog_base.h
+new file mode 100755
+index 0000000..9c89be3
+--- /dev/null
++++ b/plugins/getlog_base.h
+@@ -0,0 +1,60 @@
++/* getlog_base.h - common parameters for getlog */
++
++/* ***** EXTERNS ***** */
++
++/* These variables *must* be set externally */
++
++#ifndef GETLOG_BASE
++/* This is the maximum read size for each read. Optimal performance can be
++ * obtained by setting this to the smallest number higher than your usual
++ * line length. THIS MUST BE A 512-BYTES MULTIPLE!! I.e. 512, 1024, 8192, 8704
++ * are all valid numbers.
++ *
++ * The current implementation limit this value to 32256 */
++extern unsigned int read_chnk;
++
++/* Maximum buffered read size (Will stop reading lines longer than this!) */
++extern unsigned int max_read;
++
++/* This has to be set to a function pointer that will handle errors in
++ * various operation. The function prototype is:
++ *      void handler(char *message);
++ */
++extern void (*getlog_err)(char *);
++#endif
++
++/* ***** DEFINES ***** */
++
++/* This is the maximum length of error strings from strerror_r() */
++#define MAX_ERRSTR 128
++
++/* Define MALLOC_FREE if you want to free all dynamically allocated  memory.
++ * Normally, the OS does a better job at is when the process exits */
++/* #define MALLOC_FREE */ /* BROKEN!! */
++
++
++/* ***** PROTOTYPES ***** */
++
++/* Get first log line */
++char *get_head(int);
++
++/* Heat last log line */
++char *get_tail(int);
++
++/* Using the counter name, find index number to be used with subst_col.
++ * Returns -1 is the index wasn't found */
++int find_index(const char *, char *);
++
++/* Walk a CSV-formated log line and return the value at specified position.
++ * The pointer is also set to the next column, or NULL at end of line. */
++char *subst_col(int, char **);
++
++/* Compare a windows-formated timestamp with the current time */
++int datediff(const char*);
++
++/* This function convert stringe wo integers, with error checking */
++int myatoi(const char*);
++
++
++/* End of getlog.h */
++
+diff --git a/plugins/t/check_perfmon.t b/plugins/t/check_perfmon.t
+new file mode 100644
+index 0000000..5b66c2c
+--- /dev/null
++++ b/plugins/t/check_perfmon.t
+@@ -0,0 +1,205 @@
++#! /usr/bin/perl -w -I ..
++#
++# check_perfmon tests
++#
++# This test requires the check_perfmon_logdir.tar.bz2 taball, a
++# collection to csv files especially crafted to stress-test the
++# parser library. Get it from:
++#
++# http://dermoth.users.sourceforge.net/check_perfmon_logdir.tar.bz2
++#
++
++use strict;
++use Test::More;
++use NPTest;
++
++my $successOutput = '/^PERFMON OK: /';
++my $warningOutput = '/^PERFMON WARNING: /';
++my $failureOutput = '/^PERFMON CRITICAL: /';
++my $unknownOutput = '/^PERFMON UNKNOWN: /';
++
++# Should likely be parametrable the usual way...
++my $logdir = "t/check_perfmon_logdir";
++
++# Try to make sure we have a complete set
++if (-d $logdir && -f "$logdir/SERVER.csv" || -f "$logdir/SERVERLONG.csv"
++    && -f "$logdir/BROKEN0.csv" && -f "$logdir/BROKEN4505.csv") {
++	plan tests => 4 + 28 + 12 + (4506 * 2);
++} else {
++	plan skip_all => "Missing $logdir or files in $logdir";
++}
++
++my $result;
++
++
++
++# Check list function (4 tests)
++$result = NPTest->testCmd(
++	"./check_perfmon -H SERVER -L $logdir -C list"
++);
++cmp_ok( $result->return_code, '==', 0, "List returns OK" );
++cmp_ok( scalar(@{[split(/\n/, $result->output)]}), '==', 26, "List returns 26 lines" );
++
++$result = NPTest->testCmd(
++	"./check_perfmon -H SERVERLONG -L $logdir -C list"
++);
++cmp_ok( $result->return_code, '==', 0, "Long list returns OK" );
++cmp_ok( scalar(@{[split(/\n/, scalar($result->output))]}), '==', 251, "Long list returns 251 lines" );
++
++
++
++# Various test cases (28 tests)
++$result = NPTest->testCmd(
++	"./check_perfmon -H nosuchhost -L $logdir -C '\\Memory\\Committed Bytes'"
++);
++cmp_ok( $result->return_code, '==', 3, "Unknown if file is missing" );
++is( $result->output, "PERFMON UNKNOWN: Error opening log file: No such file or directory" );
++
++$result = NPTest->testCmd(
++	"./check_perfmon -H SERVERLONG -L $logdir -C '\\no\\such counter'"
++);
++cmp_ok( $result->return_code, '==', 3, "Unknown if counter is missing" );
++is( $result->output, "PERFMON UNKNOWN: No matching index '^no^such counter'", "Known result - unknown counter" );
++
++$result = NPTest->testCmd(
++	"./check_perfmon -H SERVER -L $logdir -C '\\Memory\\Committed Bytes' -w 1218310143 -c 1218310144"
++);
++cmp_ok( $result->return_code, '==', 1, "Critical is exclusive" );
++is( $result->output, 'PERFMON WARNING: ^Memory^Committed Bytes: 1218310144| counter=1218310144.000000c;1218310143.000000;1218310144.000000;', "Larger value" );
++
++# Header only
++$result = NPTest->testCmd(
++	"./check_perfmon -H BROKEN1198 -L $logdir -C '\\Memory\\Committed Bytes' -w 1218310143 -c 1218310144"
++);
++cmp_ok( $result->return_code, '==', 3, "Header only returns UNKNOWN" );
++is( $result->output, 'PERFMON UNKNOWN: Failed to read last log line', "Header only known result" );
++
++# Missing index
++$result = NPTest->testCmd(
++	"./check_perfmon -H SHORTLINE -L $logdir -C '\\Memory\\Committed Bytes'"
++);
++cmp_ok( $result->return_code, '==', 3, "Missing index returns UNKNOWN" );
++is( $result->output, 'PERFMON UNKNOWN: Column 14 not found', "Known Missing index result" );
++
++# Very small file
++$result = NPTest->testCmd(
++	"./check_perfmon -H SHORT -L $logdir -C '\\ASP.NET Applications(__Total__)\\Request Execution Time'"
++);
++cmp_ok( $result->return_code, '==', 0, "Short file works" );
++is( $result->output, 'PERFMON OK: ^ASP.NET Applications(__Total__)^Request Execution Time: 15| counter=15.000000c;;;', "Know Short file result" );
++
++# Tests custom separators
++$result = NPTest->testCmd(
++	"./check_perfmon -H SERVER -L $logdir -C '^Memory^Committed Bytes'"
++);
++cmp_ok( $result->return_code, '==', 0, "Ok usign caret separators" );
++is( $result->output, 'PERFMON OK: ^Memory^Committed Bytes: 1218310144| counter=1218310144.000000c;;;', "Similar output with carets" );
++
++$result = NPTest->testCmd(
++	"./check_perfmon -H SERVER -L $logdir -C '!Memory!Committed Bytes'"
++);
++cmp_ok( $result->return_code, '==', 0, "OK using bang separators" );
++is( $result->output, 'PERFMON OK: !Memory!Committed Bytes: 1218310144| counter=1218310144.000000c;;;', "Similar output with bangs" );
++
++# Perfdata tests (the logs used here have been specially selected and adapted)
++$result = NPTest->testCmd(
++	"./check_perfmon -H BROKEN2071 -L $logdir -C '^ASP.NET^Requests Rejected' -P '' -w 2.26 -c 2.40"
++);
++cmp_ok( $result->return_code, '==', 3, "Unknown on first run (perfdata mode)" );
++ok( $result->output =~ m/^PERFMON UNKNOWN: Couldn't parse last counter \(normal on first run\)\| time=(\d+);;; last=180.000000;;;$/, "Known first run perfdata output" );
++my $last = $1 || undef;
++
++SKIP: {
++	skip("Couldn't get last timestamp", 4) unless(defined($last));
++
++	$last -= 60;
++	$result = NPTest->testCmd(
++		"./check_perfmon -H BROKEN2402 -L $logdir -C '^ASP.NET^Requests Rejected' -P ' time=$last;;; last=180.000000;;;' -w 2.26 -c 2.40"
++	);
++	cmp_ok( $result->return_code, '==', 1, "Calculated perfdata returns within warning and critical (+- 1sec)" );
++	ok( $result->output =~ m/^PERFMON WARNING: ^ASP.NET^Requests Rejected: \d+(?:\.\d+)?| time=(\d+);;; last=320.000000;;; counter=\d+(?:\.\d+)?c;2.260000;2.400000;$/, "Known result with calculated perfdata" );
++	$last = $1-60 if ($1);
++
++	$result = NPTest->testCmd(
++		"./check_perfmon -H BROKEN2402 -L $logdir -C '^ASP.NET^Requests Rejected' -P ' time=$last;;; last=180.000000;;;' -m -w 137 -c 142.5"
++	);
++	cmp_ok( $result->return_code, '==', 1, "Calculated perfdata returns within warning and critical (+- 1sec, perminute)" );
++	ok( $result->output =~ m/^PERFMON WARNING: ^ASP.NET^Requests Rejected: \d+(?:\.\d+)?| time=(\d+);;; last=320.000000;;; counter=\d+(?:\.\d+)?c;137.000000;142.500000;$/, "Known result with calculated perfdata (perminute)" );
++}
++
++# Max age tests
++$result = NPTest->testCmd(
++	"./check_perfmon -H SERVER -L $logdir -C '\\Memory\\Page Faults/sec' -M 1000"
++);
++cmp_ok( $result->return_code, '==', 3, "Unknown if Data too old" );
++ok( $result->output =~ /^PERFMON UNKNOWN: Data too old \((\d+) seconds\)$/, "Match Data too old message" );
++my $age = $1 || undef;
++
++SKIP: {
++	skip("Couldn't get last age", 4) unless(defined($age));
++
++	my $oldage = $age-1;
++	my $okage = $age+10;
++
++	$result = NPTest->testCmd(
++		"./check_perfmon -H SERVER -L $logdir -C '\\Memory\\Page Faults/sec' -M $oldage"
++	);
++	cmp_ok( $result->return_code, '==', 3, "Unknown if Data too old (age-1)" );
++	like( $result->output, '/^PERFMON UNKNOWN: Data too old \(\d+ seconds\)$/', "Match Data too old message (age-1)" );
++
++	$result = NPTest->testCmd(
++		"./check_perfmon -H SERVER -L $logdir -C '\\Memory\\Page Faults/sec' -M $okage"
++	);
++	cmp_ok( $result->return_code, '==', 0, "OK if age+=10" );
++	is( $result->output, 'PERFMON OK: ^Memory^Page Faults/sec: 133.38| counter=133.384607c;;;', "Known output with valid age" );
++}
++
++
++
++# Check various counters (2x 6 tests)
++foreach my $srv ('SERVER', 'SERVERLONG') {
++	$result = NPTest->testCmd(
++		"./check_perfmon -H $srv -L $logdir -C '\\Paging File(_Total)\\% Usage'"
++	);
++	cmp_ok( $result->return_code, '==', 0, "No thresholds always return OK ($srv)" );
++	is( $result->output, 'PERFMON OK: ^Paging File(_Total)^% Usage: 1.45| counter=1.453102c;;;', "Known OK result ($srv)" );
++
++	$result = NPTest->testCmd(
++		"./check_perfmon -H $srv -L $logdir -C '\\Paging File(_Total)\\% Usage' -w 1 -c 2"
++	);
++	cmp_ok( $result->return_code, '==', 1, "Hit Warning threshold ($srv)" );
++	is( $result->output, 'PERFMON WARNING: ^Paging File(_Total)^% Usage: 1.45| counter=1.453102c;1.000000;2.000000;', "Known WARNING result ($srv)" );
++
++	$result = NPTest->testCmd(
++		"./check_perfmon -H $srv -L $logdir -C '\\Web Service(_Total)\\Current Connections' -w 20 -c 40"
++	);
++	cmp_ok( $result->return_code, '==', 2, "Hit Warning threshold ($srv)" );
++	is( $result->output, 'PERFMON CRITICAL: ^Web Service(_Total)^Current Connections: 44| counter=44.000000c;20.000000;40.000000;', "Known CRITICAL result ($srv)" );
++}
++
++
++
++# These tests try to catch any parsing segfault on truncated files
++for (my $i = 0; $i <= 4505; $i++) {
++	my ($listrc, $counterrc);
++	if ($i <= 1390) {
++		$listrc = 3;
++	} else {
++		$listrc = 0;
++	}
++	if ($i <= 1738) {
++		$counterrc = 3;
++	} else {
++		$counterrc = 0;
++	}
++	$result = NPTest->testCmd(
++		"./check_perfmon -H BROKEN$i -L $logdir -C list"
++	);
++	cmp_ok( $result->return_code, '==', $listrc, "Automated list $i" );
++
++	$result = NPTest->testCmd(
++		"./check_perfmon -H BROKEN$i -L $logdir -C  '\\Web Service(_Total)\\Post Requests/sec'"
++	);
++	cmp_ok( $result->return_code, '==', $counterrc, "Automated counter $i" );
++}
++
+-- 
+1.6.1.3
+
