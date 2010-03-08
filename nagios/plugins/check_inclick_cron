@@ -34,7 +34,6 @@ my $np = Nagios::Plugin->new(
     . '       [ -w <warning_delay> ] [ -c <critical_delay> ]',
   version => $VERSION,
   plugin  => $PROGNAME,
-  shortname => uc($PROGNAME),
   blurb => "Check inClick cron jobs status from database. Returns CRITICAL if the last job\n"
     . "did not run successfully. Can also return WARNING or CRITICAL if last run is\n"
     . 'older than specified. Return UNKNOWN if cron job status can\'t be specified.',

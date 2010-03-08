@@ -67,7 +67,6 @@ my $np = Nagios::Plugin->new(
     . '    [ -r ] [ -s ] [ -l label ]',
   version => $VERSION,
   plugin  => $PROGNAME,
-  shortname => uc($PROGNAME),
   blurb => 'Run a simple test query against a SQL Server',
   extra   => "\n\nCopyright (c) 2007 Nagios Plugin Development Team",
   timeout => 30,

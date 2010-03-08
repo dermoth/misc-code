@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 #
-# Checks fils size - nice example of minimalistic plugin using Nagios::Plugin
+# Checks file size - nice example of minimalistic plugin using Nagios::Plugin
 # Author: Mark Steele <mark@control-alt-del.org>
 #
 

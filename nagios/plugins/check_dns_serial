@@ -33,7 +33,6 @@ my $np = Nagios::Plugin->new(
     . '   -D <domain>[,<domain2>...]',
   version => $VERSION,
   plugin  => $PROGNAME,
-  shortname => uc($PROGNAME),
   blurb => 'Check serial synchronization between multiple DNS servers',
   timeout => 20,
 );

@@ -65,7 +65,6 @@ my $np = Nagios::Plugin->new(
     . '       -I <VS Name/IP Address> [ -p <VS Port> ]',
   version => $VERSION,
   plugin  => $PROGNAME,
-  shortname => uc($PROGNAME),
   blurb => 'Check BigIP Virtual Server status',
   timeout => 10,
 );

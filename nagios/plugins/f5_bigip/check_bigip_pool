@@ -53,7 +53,6 @@ my $np = Nagios::Plugin->new(
     . '       -P <Pool Name> [ -w <warning percent> ] [ -c <critical percent> ]',
   version => $VERSION,
   plugin  => $PROGNAME,
-  shortname => uc($PROGNAME),
   blurb => 'Check the number of available nodes in a BigIP Pool',
   timeout => 10,
 );

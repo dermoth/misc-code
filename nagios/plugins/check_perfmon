@@ -52,7 +52,6 @@ my $np = Nagios::Plugin->new(
 	    . '   [ -P <perfdata> ] [ -m ]',
 	version => $VERSION,
 	plugin  => $PROGNAME,
-	shortname => uc($PROGNAME),
 	blurb => "Checks a Windows Performance log in CSV format. The file path is constructed as\n"
 	    . '   <log_dir>/<hostname>.csv, case-sensitive.',
 	timeout => 10,

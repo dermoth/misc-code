@@ -37,8 +37,7 @@ my $np = Nagios::Plugin->new(
 	    . "   [ -b <threshold> ] [ -B <threshold> ]\n"
 	    . '   [ -i <threshold> ] [ -I <threshold> ]',
 	version => $VERSION,
-	plugin  => 'check_'.$PROGNAME,
-	shortname => uc($PROGNAME),
+	plugin  => $PROGNAME,
 	blurb => 'Checks the number of workers from the httpd scoreboard.',
 	extra => "\nNotes:\n"
 	   . "The thresholds are not always as obvious as they might look. If you want to\n"
