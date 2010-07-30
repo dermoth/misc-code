@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # sub-mailhandler.py - frontend for rdm-mailhandler.rb
-# v.1.0
+# v.1.0.1
 #
 # This script parses the header of a message until it finds a known email;
 # then use that email to look for a subaddress pattern that provides a
@@ -30,8 +30,8 @@
 #
 
 import sys
+import email
 from optparse import OptionParser
-from email import parser, message, utils
 from subprocess import Popen, PIPE
 
 oparser = OptionParser(usage='%prog -h | -e <email> [ -p <project> ] -- <command-line>',
@@ -77,7 +77,7 @@ while True:
     if line.strip() == '': break
 
 # parse them...
-eo = parser.HeaderParser()
+eo = email.parser.HeaderParser()
 msg = eo.parsestr(buf, headersonly=True)
 
 # Fetch all email addresses out of them...
@@ -85,7 +85,7 @@ tos = msg.get_all('to', [])
 ccs = msg.get_all('cc', [])
 resent_tos = msg.get_all('resent-to', [])
 resent_ccs = msg.get_all('resent-cc', [])
-all_recipients = utils.getaddresses(tos + ccs + resent_tos + resent_ccs)
+all_recipients = email.utils.getaddresses(tos + ccs + resent_tos + resent_ccs)
 
 # And look for a matching one
 project = None
