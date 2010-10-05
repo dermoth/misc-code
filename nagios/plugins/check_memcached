@@ -88,7 +88,7 @@ if ($memcache1) {
 	if (count($options['v'])>=3) var_dump($stats);
 
 	$hit_ratio = sprintf("%.06f",$stats['get_hits']/($stats['get_hits']+$stats['get_misses'])*100);
-	if (count($options['v'])>=2) echo "Hit ratio: $hit_ratio\n";
+	if (count($options['v'])>=2) echo "Hit ratio: $hit_ratio%\n";
 
 	$evictions = false;
 	if (count($last) == 2) {
@@ -116,11 +116,11 @@ if ($memcache1) {
 	}
 
 	if (isset($options['C']) && $hit_ratio < $options['C']) {
-		$msg .= 'Hit ratio is under '.$options['C'].', ';
+		$msg .= 'Hit ratio is under '.$options['C'].'%, ';
 		$ret = STATE_CRITICAL;
 	}
 	else if (isset($options['W']) && $hit_ratio < $options['W']) {
-		$msg = 'Hit ratio is under '.$options['W'].', ';
+		$msg = 'Hit ratio is under '.$options['W'].'%, ';
 		$ret = $ret != STATE_CRITICAL ? STATE_WARNING : $ret;
 	}
 	if ($ret == STATE_OK) {
@@ -138,8 +138,8 @@ if ($memcache1) {
 	// Other stats
 	if ($evictions !== false)
 		$perfstr .= ' evictions='.$evictions.';'.(isset($options['w']) ? $options['w'] : '').';'.(isset($options['c']) ? $options['c'] : '').';;';
-	$perfstr .= ' ratio='.$hit_ratio.';'.(isset($options['W']) ? $options['W'] : '').';'.(isset($options['C']) ? $options['C'] : '').';;';
-	np_exit($ret, $msg.' (evict: '.($evictions === false ? 'NaN' : sprintf("%.02f",$evictions)).'/min, hit: '.sprintf("%.02f",$hit_ratio).')|'.$perfstr);
+	$perfstr .= ' ratio='.$hit_ratio.'%;'.(isset($options['W']) ? $options['W'] : '').';'.(isset($options['C']) ? $options['C'] : '').';;';
+	np_exit($ret, $msg.' (evict: '.($evictions === false ? 'NaN' : sprintf("%.02f",$evictions)).'/min, hit: '.sprintf("%.02f",$hit_ratio).'%)|'.$perfstr);
 }
 else {
 	if (count($last) == 2) {
@@ -201,9 +201,9 @@ function np_help($errstr = false) {
 	echo "  -P STRING\n";
 	echo "    Perfdata string from previous check, needed to calculate evictions.\n";
 	echo "  -W DOUBLE\n";
-	echo "    Warning threshold for hit ratio (higher is better).\n";
+	echo "    Warning threshold for hit ratio (percent, higher is better).\n";
 	echo "  -C DOUBLE\n";
-	echo "    Critical threshold for hit ratio (higher is better).\n";
+	echo "    Critical threshold for hit ratio (percent, higher is better).\n";
 	echo "  -h\n";
 	echo "    This help message\n";
 	echo "  -v\n";
