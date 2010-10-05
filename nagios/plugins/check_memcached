@@ -2,12 +2,12 @@
 <?php
 /*
  * check_memcached - PHP plugin for checking evictions and ratio of Memcached
- * v.1.0
+ * v.1.0.1
  *
  * This script query stats on a Memcached server to get the average number of
  * evictions per minute and cache hit ratio.
  *
- * Copyright (C) 2009 Thomas Guyot-Sionnest <tguyot@gmail.com>
+ * Copyright (C) 2009-2010 Thomas Guyot-Sionnest <tguyot@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -87,7 +87,7 @@ if ($memcache1) {
 	$stats = $memcache1->getstats();
 	if (count($options['v'])>=3) var_dump($stats);
 
-	$hit_ratio = sprintf("%.06f",$stats['get_hits']/$stats['get_misses']);
+	$hit_ratio = sprintf("%.06f",$stats['get_hits']/($stats['get_hits']+$stats['get_misses'])*100);
 	if (count($options['v'])>=2) echo "Hit ratio: $hit_ratio\n";
 
 	$evictions = false;
