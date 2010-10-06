@@ -2,7 +2,7 @@
 <?php
 /*
  * check_memcached - PHP plugin for checking evictions and ratio of Memcached
- * v.1.0.1
+ * v.1.0.2
  *
  * This script query stats on a Memcached server to get the average number of
  * evictions per minute and cache hit ratio.
@@ -97,9 +97,9 @@ if ($memcache1) {
 			np_exit(STATE_UNKNOWN, 'MEMCACHED UNKNOWN - Last and current times are the same!');
 		}
 		
-		$evictions = sprintf("%.06f",($stats['evictions'] - $last[1]) / ($now - $last[0]));
+		$evictions = sprintf("%.06f", 60 * ($stats['evictions'] - $last[1]) / ($now - $last[0]));
 	}
-	if (count($options['v'])>=2) echo "Evictions: $evictions\n";
+	if (count($options['v'])>=2) echo "Evictions: $evictions per minute (".($stats['evictions'] - $last[1]).")\n";
 
 	// Check against thresholds
 	if ($evictions === false) {
@@ -137,11 +137,10 @@ if ($memcache1) {
 	}
 	// Other stats
 	if ($evictions !== false)
-		$perfstr .= ' evictions='.$evictions.';'.(isset($options['w']) ? $options['w'] : '').';'.(isset($options['c']) ? $options['c'] : '').';;';
+		$perfstr .= ' evictions='.($evictions === false || $evictions < 0 ? 'NaN' : $evictions).';'.(isset($options['w']) ? $options['w'] : '').';'.(isset($options['c']) ? $options['c'] : '').';;';
 	$perfstr .= ' ratio='.$hit_ratio.'%;'.(isset($options['W']) ? $options['W'] : '').';'.(isset($options['C']) ? $options['C'] : '').';;';
-	np_exit($ret, $msg.' (evict: '.($evictions === false ? 'NaN' : sprintf("%.02f",$evictions)).'/min, hit: '.sprintf("%.02f",$hit_ratio).'%)|'.$perfstr);
-}
-else {
+	np_exit($ret, $msg.' (evict: '.($evictions === false || $evictions < 0 ? 'NaN' : sprintf("%.02f",$evictions)).'/min, hit: '.sprintf("%.02f",$hit_ratio).'%)|'.$perfstr);
+} else {
 	if (count($last) == 2) {
 		$perfstr = 'time='.$last[0].' last='.$last[1];
 	}
