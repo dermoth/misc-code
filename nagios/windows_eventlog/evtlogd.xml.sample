@@ -1,4 +1,5 @@
 <!-- Evtlogd config file -->
+<!-- vim: set filetype=xml: ->
 <Config>
 	<HostGrp name="WAMP">
 		<!-- All hosts named WEB<NN> or DB<NN>,
@@ -72,6 +73,9 @@
 			<!-- Calculate frequency per-host rather than per-EvtItem - You will likely
 			     want this set to False *only* when using SubstHost (above) -->
 			<Perhost>False</Perhost>
+			<!-- Apply frequency counter and rate on a per-eventid basis when true.
+			     Here we want all events to increment the frequency counter -->
+			<PerID>False</PerID>
 			<!-- Requires Number events within Time seconds to send an alert, per host -->
 			<Number>100</Number>
 			<Time>60</Time>

@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 #
 # evtlogd - evtsys log daemon
-#           v.1.3.2
+#           v.1.4.0
 #           Copyright(c) 2008-2010 Thomas Guyot-Sionnest <tguyot@gmail.com>
 #
 # This is a Perl daemon that receives evtsys logs trough syslog-ng and sends
@@ -14,7 +14,7 @@
 #
 #   evtlogd configtest
 #
-# Returns a non-0 status on errors and prints detailed error messages to STDOUT.
+# Returns a non-zero status on errors and prints detailed error messages to STDOUT.
 #
 
 use XML::Simple qw(:strict);
@@ -41,7 +41,7 @@ $NAGLOG = '/usr/local/nagios/var/rw/evtlogd_cmd.log';
 ## Our PID file
 $PID_FILE = '/var/run/evtlogd.pid';
 ## Uncomment the following line to write a debug log (CAUTION - log may become HUGE)
-#$DBGLOG = '/tmp/evtlogd.log';
+$DBGLOG = '/tmp/evtlogd.log';
 
 # Some useful hashes...
 %TYPE = (
@@ -196,19 +196,25 @@ while (<STDIN>) {
 		syswrite (LOG, &$DBGTIME . " [$$] Processing frequency for $LOOKUP[$i]{name} ($i)\n") if ($DBGLOG);
 
 		# But first check that we've seen that host/event before
-		my $freqref;
-		if ($LOOKUP[$i]{freqperhost}) {
-			if (!defined($LOOKUP[$i]{host}{$host})) {
-				@{$LOOKUP[$i]{host}{$host}{freqarray}} = @{$LOOKUP[$i]{freqarray}};
-				$LOOKUP[$i]{host}{$host}{nlast} = 0;
-			}
-			$freqref = $LOOKUP[$i]{host}{$host};
+		my ($freqref, $id);
+		# If PerID, set $id to the event ID, otherwise set it to "NaN"
+		if ($LOOKUP[$i]{freqperid}) {
+			$id = $evid;
 		} else {
-			if (!defined($LOOKUP[$i]{event}{$LOOKUP[$i]{name}})) {
-				@{$LOOKUP[$i]{event}{$LOOKUP[$i]{name}}{freqarray}} = @{$LOOKUP[$i]{freqarray}};
-				$LOOKUP[$i]{event}{$LOOKUP[$i]{name}}{nlast} = 0;
+			$id = 'NaN';
+		}
+		if ($LOOKUP[$i]{freqperhost}) {
+			if (!defined($LOOKUP[$i]{host}{$host}{$id})) {
+				@{$LOOKUP[$i]{host}{$host}{$id}{freqarray}} = @{$LOOKUP[$i]{freqarray}};
+				$LOOKUP[$i]{host}{$host}{$id}{nlast} = 0;
 			}
-			$freqref = $LOOKUP[$i]{event}{$LOOKUP[$i]{name}};
+			$freqref = $LOOKUP[$i]{host}{$host}{$id};
+		} else {
+			if (!defined($LOOKUP[$i]{event}{$LOOKUP[$i]{name}{$id}})) {
+				@{$LOOKUP[$i]{event}{$LOOKUP[$i]{name}{$id}}{freqarray}} = @{$LOOKUP[$i]{freqarray}};
+				$LOOKUP[$i]{event}{$LOOKUP[$i]{name}{$id}}{nlast} = 0;
+			}
+			$freqref = $LOOKUP[$i]{event}{$LOOKUP[$i]{name}{$id}};
 		}
 
 		if (process_freq ($LOOKUP[$i]{freqtime}, $freqref->{freqarray})) {
@@ -320,6 +326,14 @@ sub init_conf {
 			syswrite (LOG, &$DBGTIME . " [$$] Perhost Frequency for event item '$_' must be 'True' or 'False'\n") if ($DBGLOG);
 			do_exit("Perhost Frequency for event item '$_' must be 'True' or 'False'");
 		}
+		if (lc($config->{EvtItem}->{$_}->{Freq}->{PerID}) eq 'true') {
+			$config->{EvtItem}->{$_}->{Freq}->{PerID} = 1;
+		} elsif (lc($config->{EvtItem}->{$_}->{Freq}->{PerID}) eq 'false') {
+			$config->{EvtItem}->{$_}->{Freq}->{PerID} = 0;
+		} else {
+			syswrite (LOG, &$DBGTIME . " [$$] PerID Frequency for event item '$_' must be 'True' or 'False'\n") if ($DBGLOG);
+			do_exit("PerID Frequency for event item '$_' must be 'True' or 'False'");
+		}
 
 		foreach my $item (('Include', 'Exclude')) {
 			next unless (defined ($config->{EvtItem}->{$_}->{$item}));
@@ -384,6 +398,7 @@ sub init_conf {
 
 		# This is the occurrence counter default values...
 		$LOOKUP[$evtnum]{freqperhost} = $config->{EvtItem}->{$evtitem}->{Freq}->{Perhost};
+		$LOOKUP[$evtnum]{freqperid} = $config->{EvtItem}->{$evtitem}->{Freq}->{PerID};
 		$LOOKUP[$evtnum]{freqtime} = $config->{EvtItem}->{$evtitem}->{Freq}->{Time};
 		$LOOKUP[$evtnum]{freqarray} = [ map { 0 } 1 .. $config->{EvtItem}->{$evtitem}->{Freq}->{Number} ];
 
