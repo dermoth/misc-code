@@ -41,7 +41,7 @@ $NAGLOG = '/usr/local/nagios/var/rw/evtlogd_cmd.log';
 ## Our PID file
 $PID_FILE = '/var/run/evtlogd.pid';
 ## Uncomment the following line to write a debug log (CAUTION - log may become HUGE)
-$DBGLOG = '/tmp/evtlogd.log';
+#$DBGLOG = '/tmp/evtlogd.log';
 
 # Some useful hashes...
 %TYPE = (
