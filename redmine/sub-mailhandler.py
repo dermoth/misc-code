@@ -47,7 +47,7 @@ oparser.add_option('-p', '--project', type='string', dest='project',
 
 (options, args) = oparser.parse_args()
 
-# Get email split and make sute it's not having weird formatting already
+# Get email and make sure it's not having weird formatting already
 if options.email is None: oparser.error('You must provide an email address')
 
 try:
