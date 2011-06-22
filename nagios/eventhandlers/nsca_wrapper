@@ -1,0 +1,188 @@
+#!/usr/bin/env python
+#
+# nsca_wrapper - Run a plugin and pass its result trough send_nsca
+# Copyright (C) 2011 Thomas Guyot-Sionnest <tguyot@gmail.com>
+#
+# Known Bugs:
+#   Extra output/error from programs may not be passed trough, see:
+#     http://bugs.python.org/issue10806
+#
+# TODO: Support a command file, where each command is run and fed trough send_nsca
+#
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+#
+
+#Service Checks:
+#<host_name>[tab]<svc_description>[tab]<return_code>[tab]<plugin_output>[newline]
+#
+#Host Checks:
+#<host_name>[tab]<return_code>[tab]<plugin_output>[newline]
+#
+
+import sys, os
+import getopt
+from subprocess import Popen, PIPE
+
+PROGNAME = 'nsca_wrapper'
+VERSION = 'v1.0'
+
+def prnt_help(msg=None):
+    if msg: print str(msg)+'\n'
+    print PROGNAME, VERSION
+    print 'Usage:', PROGNAME, '<args> [--] <command> [<command args>]'
+    print ''
+    print 'nsca_wrapper args:'
+    print '  -h <host_name> [-s <service_description>] [-C <send_nsca_cmd>] [-v]'
+    print ''
+    print 'send_nsca args: (see `send_nsca ---help\' for usage)'
+    print '  -H <host_address> [-p port] [-t to_sec] [-d delim] [-c config_file]'
+    print ''
+    print 'Options:'
+    print '  -h <host_name>'
+    print '    Host name to report results to'
+    print '  -s <service_description>'
+    print '    Service description to report results to, if omitted a host check is assumed'
+    print '  -C <send_nsca_cmd>'
+    print '    Path of the send_nsca command, default to `send_nsca\' (located via $PATH)'
+    print '  -v'
+    print '    Verbose, prints what is happening (for debugging)'
+    print '  --help'
+    print '    Print this help message'
+    print '  --'
+    print '    Stop argument processing, next argument is the plugin command'
+    print '  <command>'
+    print '    Nagios Plugin to run. The first non-option argument is assumed to be the'
+    print '    plugin'
+    print '  <command args>'
+    print '    Nagios Plugin arguments. Anything that follow the <command> argument is'
+    print '    copied verbatim'
+    print ''
+    if msg: sys.exit(1)
+    sys.exit(0)
+
+# Our option defaults
+verbose = False
+send_nsca = 'send_nsca'
+host = None
+service = None
+delim = '\t'
+# send_nsca options
+s_host = None
+s_port = None
+s_to = None
+s_delim = None
+s_config = None
+
+try:
+    opts, command = getopt.gnu_getopt(sys.argv[1:], '+h:s:C:vH:p:t:d:c:', ['help'])
+except getopt.GetoptError, err:
+    prnt_help('Parse error: '+str(err))
+
+for o, a in opts:
+    if o == '-h':
+        host = a
+    elif o == '-s':
+        service = a
+    elif o == '-C':
+        send_nsca = a
+    elif o == '-v':
+        verbose = True
+    elif o == '-H':
+        s_host = a
+    elif o == '-p':
+        s_port = a
+    elif o == '-t':
+        s_to = a
+    elif o == '-d':
+        s_delim = a
+    elif o == '-c':
+        s_config = a
+    elif o == '--help':
+        prnt_help()
+    else:
+        assert False, "Detected uneven particle count in the universe, aborting!"
+
+if host == None: prnt_help('')
+if verbose and service == None: print "Service unspecified, host check mode selected"
+if s_host == None: prnt_help('Missing send_nsca -H argument')
+
+if verbose: print 'running plugin:', command
+try:
+    cmd = Popen(command, stdout=PIPE, stderr=sys.stderr, shell=False)
+except OSError, e:
+    print 'Error runnign plugin:', e
+    sys.exit(1)
+
+try:
+    ck_res = cmd.stdout.readline()
+    ck_extra = cmd.stdout.readlines()
+except IOError, e:
+    print 'Error reading from plugin:', e
+
+ck_rc = os.waitpid(cmd.pid, 0)
+
+if verbose:
+    print 'result:', ck_res.rstrip('\n')
+    print 'extra:', ck_extra
+    print 'code:', ck_rc
+
+if len(ck_extra) > 0:
+    print "Extra lines returned (won't be passed to send_nsca):"
+    for l in ck_extra:
+        print l.rstrip('\n')
+
+nsca_cmd = [send_nsca, '-H', s_host]
+if s_port:
+    nsca_cmd.append('-p')
+    nsca_cmd.append(s_port)
+if s_to:
+    nsca_cmd.append('-to')
+    nsca_cmd.append(s_to)
+if s_delim:
+    delim = s_delim
+    nsca_cmd.append('-d')
+    nsca_cmd.append(s_delim)
+if s_config:
+    nsca_cmd.append('-c')
+    nsca_cmd.append(s_config)
+
+if service:
+    nsca_res="%s%s%s%s%i%s%s\n" % (host, delim, service, delim, ck_rc[1], delim, ck_res)
+else:
+    nsca_res="%s%s%i%s%s\n" % (host, delim, ck_rc[1], delim, ck_res)
+
+res_sent = True
+if verbose: print 'running send_nsca:', nsca_cm
+try:
+    ncmd = Popen(nsca_cmd, stdin=PIPE, stdout=sys.stdout, stderr=sys.stderr, shell=False)
+except OSError, e:
+    print 'Error runnign send_nsca:', e
+    sys.exit(1)
+
+if verbose: print 'sending result:', nsca_res.rstrip('\n')
+try:
+    ncmd.stdin.write(nsca_res)
+    ncmd.stdin.close();
+except IOError, e:
+    print 'Write error on send_nsca:', e
+
+n_rc = os.waitpid(ncmd.pid, 0)
+
+if n_rc[1] != 0:
+    print 'Command failed with code ', n_rc[1]>>8
+    sys.exit(n_rc[1]>>8)
+
+
