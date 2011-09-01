@@ -40,14 +40,14 @@ PROGNAME = 'nsca_wrapper'
 VERSION = 'v1.0'
 
 def prnt_help(msg=None):
-    if msg: print str(msg)+'\n'
+    if msg: print 'Error: '+str(msg)+'\n'
     print PROGNAME, VERSION
     print 'Usage:', PROGNAME, '<args> [--] <command> [<command args>]'
     print ''
     print 'nsca_wrapper args:'
     print '  -h <host_name> [-s <service_description>] [-C <send_nsca_cmd>] [-v]'
     print ''
-    print 'send_nsca args: (see `send_nsca ---help\' for usage)'
+    print 'send_nsca args: (see `send_nsca --help\' for usage)'
     print '  -H <host_address> [-p port] [-t to_sec] [-d delim] [-c config_file]'
     print ''
     print 'Options:'
@@ -65,7 +65,7 @@ def prnt_help(msg=None):
     print '    Stop argument processing, next argument is the plugin command'
     print '  <command>'
     print '    Nagios Plugin to run. The first non-option argument is assumed to be the'
-    print '    plugin'
+    print '    plugin command'
     print '  <command args>'
     print '    Nagios Plugin arguments. Anything that follow the <command> argument is'
     print '    copied verbatim'
@@ -89,7 +89,7 @@ s_config = None
 try:
     opts, command = getopt.gnu_getopt(sys.argv[1:], '+h:s:C:vH:p:t:d:c:', ['help'])
 except getopt.GetoptError, err:
-    prnt_help('Parse error: '+str(err))
+    prnt_help(str(err))
 
 for o, a in opts:
     if o == '-h':
@@ -115,7 +115,7 @@ for o, a in opts:
     else:
         assert False, "Detected uneven particle count in the universe, aborting!"
 
-if host == None: prnt_help('')
+if host == None: prnt_help('Missing check host_name')
 if verbose and service == None: print "Service unspecified, host check mode selected"
 if s_host == None: prnt_help('Missing send_nsca -H argument')
 
