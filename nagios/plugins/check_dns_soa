@@ -1,0 +1,313 @@
+#! /usr/bin/perl
+#
+# check_dns_soa  -  Check SOA of dns zones
+#
+# Copyright (C) 2006-2009 Thomas Guyot-Sionnest <tguyot@gmail.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+#
+
+use strict;
+use warnings;
+use vars qw($PROGNAME $VERSION $np $warningmsg $errormsg);
+use Nagios::Plugin;
+use Net::DNS;
+
+$PROGNAME = 'check_dns_soa';
+$VERSION = '0.9';
+
+$np = Nagios::Plugin->new(
+	usage => "Usage: %s -H <hostname>[,<hostname2>...] [-s]\n"
+	  . '   -D <domain>[,<domain2>...] [-w <thresholds>] [-c <thresholds>]',
+	version => $VERSION,
+	plugin  => $PROGNAME,
+	blurb => 'Check SOA of dns zones',
+	timeout => 30,
+);
+
+$np->add_arg(
+	spec => 'hostname|H=s@',
+	help => "-H, --hostname=<hostname_list>\n"
+	  . "   Comma-separated list of possibly valid nameservers (can be specified\n"
+	  . '   multiple times).',
+	required => 1,
+);
+
+$np->add_arg(
+	spec => 'check-sync|s',
+	help => "-s, --check_sync\n"
+	  . "   Check serial synchronization between advertised nameservers.",
+	default => 0,
+	required => 0,
+);
+
+$np->add_arg(
+	spec => 'warning|w=s',
+	help => "-w, --warning=<thresholds>\n"
+	  . "   Warning thresholds on the count of advertised nameservers. See\n"
+	  . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
+	  . '   for the threshold format.',
+	required => 0,
+);
+
+$np->add_arg(
+	spec => 'critical|c=s',
+	help => "-c, --critical=<thresholds>\n"
+	  . "   Critical thresholds on the count of advertised nameservers. See\n"
+	  . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
+	  . '   for the threshold format.',
+	required => 0,
+);
+
+$np->add_arg(
+	spec => 'domain|D=s@',
+	help => "-D, --domain=<domain_list>\n"
+	  . "   Comma-separated list of domains to check (can be specified multiple times).\n"
+	  . "   Domains must have a SOA record.",
+	required => 1,
+);
+
+$np->getopts;
+
+# Assign, then check args
+
+my (@hostnames, @domains) = ();
+for (@{$np->opts->hostname}) {
+	push @hostnames, split(/,/);
+}
+for (@{$np->opts->domain}) {
+	push @domains, split(/,/);
+}
+
+for (@hostnames) {
+	$np->nagios_exit('UNKNOWN', "Hostname $_ contains invalid characters.")
+		if (/\`|\~|\!|\$|\%|\^|\&|\*|\||\'|\"|\<|\>|\?|\,|\(|\)|\=/);
+}
+
+for (@domains) {
+	$np->nagios_exit('UNKNOWN', "Domain $_ contains invalid characters.")
+		if (/\`|\~|\!|\$|\%|\^|\&|\*|\||\'|\"|\<|\>|\?|\,|\(|\)|\=/);
+}
+
+$np->set_thresholds(
+	warning => ($np->opts->warning ? $np->opts->warning : undef),
+	critical => ($np->opts->critical ? $np->opts->critical : undef),
+);
+
+# Clear global vars in case they're used in a epn or similar....
+$warningmsg = '';
+$errormsg = '';
+
+# We get the root nameservers list from /etc/dnsroots.global
+open ROOTS, "</etc/dnsroots.global"
+	or $np->nagios_exit('UNKNOWN', "Failed to open /etc/dnsroots.global: $!");
+
+my @roots;
+while (<ROOTS>) {
+	chomp;
+	next unless (m/^\s*(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+	push @roots, $1;
+}
+close ROOTS;
+
+# Set up the alarm
+alarm($np->opts->timeout);
+
+# Seen NS list for message de-duplication
+my %seenns = ();
+foreach my $domain (@domains) {
+	# Walk all roots and intermediate nameservers, return all SOA's found (one per nameserver)
+	my @soa = recurse_soa($domain, @roots);
+
+	# Check thresholds against scalar(@soa)
+	my $nscount_res = $np->check_threshold(scalar(@soa));
+	print STDERR "$domain has ".scalar(@soa)." authoritative nameservers\n" if ($np->opts->verbose);
+
+	if ($nscount_res == CRITICAL) {
+		$errormsg = "$domain: Advertised NS count ".scalar(@soa).' not within critical range. ';
+	} elsif ($nscount_res == WARNING) {
+		$warningmsg = "$domain: Advertised NS count ".scalar(@soa).' not within warning range. ';
+	} elsif ($nscount_res != OK) {
+		$np->nagios_exit('UNKNOWN', "$domain: np->check_threshold result out of bounds");
+	}
+
+	# Find master SOA, check names and NS records
+	my $msoa = undef;
+	my @ssoa = ();
+	foreach my $s (@soa) {
+		if (grep(/^$s->{rr}->{mname}$/, @hostnames) == 0) {
+			next if (exists($seenns{$s->{rr}->mname}));
+			$errormsg .= "$domain: master NS ".$s->{rr}->mname." from ".$s->{ns}." not in allowed list. ";
+			$seenns{$s->{rr}->mname} = 1;
+			next;
+		}
+		check_ns($s->{rr}->name, $s->{ns});
+
+		# The rest is related to the serial check
+		next unless ($np->opts->{'check-sync'});
+		if ($s->{master}) {
+			# assert on duplicate "masters" (unexpected here)
+			die if (defined($msoa));
+			$msoa = $s;
+		} else {
+			push @ssoa, $s;
+		}
+	}
+
+	if (!defined($msoa)) {
+		$warningmsg .= "$domain: Couldn't reach master NS. ";
+		next;
+	}
+
+	# Check serials between master and slaves
+	next unless ($np->opts->{'check-sync'});
+	foreach my $s (@ssoa) {
+		$errormsg .= "Serial on ".$s->{ns}."do not match ".$msoa->{ns}." for $domain: ".$s->{rr}->serial." != ".$msoa->{rr}->serial.". "
+			if ($s->{rr}->serial != $msoa->{rr}->serial);
+	}
+}
+
+alarm(0);
+
+if ($errormsg ne '') {
+	chop($errormsg);
+	$np->nagios_exit('CRITICAL', $errormsg)
+}
+
+if ($warningmsg ne '') {
+	chop($warningmsg);
+	$np->nagios_exit('WARNING', $warningmsg)
+}
+
+$np->nagios_exit('OK', 'TODO. Compared ' . scalar(@domains) . ' domains');
+
+{
+	# lookup cache - don't repeat the same query on the same ns twice
+	my $lc;
+
+	# This function query each NS in @nslst and recurse on any NS listed in
+	# responses, eventually getting and returning the SOA records for $dom.
+	sub recurse_soa {
+		my $dom = shift;
+		my @nslst = @_;
+
+		my @SOA = ();
+		my $mns = '';
+		foreach my $ns (@nslst) {
+			next if (exists($lc->{$ns}->{$dom}));
+			my $res = Net::DNS::Resolver->new(
+			       nameservers => [$ns],
+			       recurse     => 0,
+			       retry       => 2, # 2 tries
+			       retrans     => 1, # Retrans timeout; result seems to be the double yet can't be lower than 1
+			       debug       => $np->opts->verbose >= 3 ? 1 : 0,
+			);
+
+			print STDERR "Getting SOA record for $dom from $ns\n" if ($np->opts->verbose > 1);
+			my $query = $res->send($dom, 'SOA');
+
+			if (!defined($query)) {
+				$warningmsg .= "Failed SOA query for $dom from $ns. ";
+				$lc->{$ns}->{$dom} = 1;
+			} elsif ($query->header->ancount == 0) {
+				# If we don't have an answer it should point to authoritative NS'es...
+				#
+				# 1. Build a cache of addresses from the returned glue (gluecache)
+				# The gluecache contains NS IP's from the additional section in
+				# responses and avoids a transparent lookup by Net::DNS.
+				my %gluecache;
+				foreach my $rr ($query->additional) {
+					$gluecache{$rr->name} = $rr->address if ($rr->class eq 'IN' && $rr->type eq 'A');
+				}
+				# 2. Build a list of NS to recurse into, use IP if known
+				my %next;
+				foreach my $rr ($query->authority) {
+					next unless ($rr->type eq 'NS');
+					if (exists($gluecache{$rr->nsdname})) {
+						$next{$gluecache{$rr->nsdname}} = 1;
+					} else {
+						$next{$rr->nsdname} = 1;
+						print STDERR "Warning: ".$rr->nsdname." not in gluecache\n" if ($np->opts->verbose);
+					}
+				}
+				# 3. Finally recurse into every authority NS returned
+				push @SOA, recurse_soa($dom, keys(%next));
+				$lc->{$ns}->{$dom} = 1;
+			} else {
+				# We've got an answer, get the SOA...
+				foreach my $rr ($query->answer) {
+					next unless $rr->type eq 'SOA';
+
+					# Resolve master NS IP - if the server has the SOA is should have the master address as well
+					# NB: Should we warn of multiple masters?
+					if ($mns eq '' && defined(my $s = $res->query($rr->mname, 'A'))) {
+						foreach my $ss ($s->answer) {
+							next unless ($ss->type eq 'A');
+							$mns = $ss->address;
+						}
+					} elsif ($mns eq '') {
+						print STDERR "Warning: Failed A query for ".$rr->mname." from $ns\n" if ($np->opts->verbose);
+					}
+
+					# Push the SOA data, including NS IP and master status
+					push @SOA, { ns=>$ns, rr=>$rr, master=>($ns eq $mns ? 1 : 0) };
+				}
+				print STDERR "Found SOA for $dom on $ns\n" if ($np->opts->verbose);
+				$lc->{$ns}->{$dom} = 1;
+			}
+		}
+		return @SOA;
+	}
+}
+
+{
+	# Seen check list for message de-duplication
+	my $ckseen;
+
+	# This function checks that all nameservers returned by an authoritative
+	# NS are known/valid.
+	sub check_ns {
+		my $domain = shift;
+		my $ns = shift;
+
+		# We already ran this check
+		return if (defined($ckseen->{$domain}->{$ns}));
+
+		my $res = Net::DNS::Resolver->new(
+		       nameservers => [$ns],
+		       recurse     => 0,
+		       retry       => 2, # 2 tries
+		       retrans     => 1, # Retrans timeout; result seems to be the double yet can't be lower than 1
+		       debug       => $np->opts->verbose >= 3 ? 1 : 0,
+		);
+
+		my $query = $res->query($domain, 'NS');
+		$warningmsg .= "Failed NS query for $domain from $ns. " if (!defined($query));
+		$warningmsg .= "No NS returned for $domain from $ns. " if ($query->header->ancount == 0);
+
+		foreach my $rr ($query->answer) {
+			next unless $rr->type eq 'NS';
+
+			if (grep(/^$rr->{nsdname}$/, @hostnames) == 0) {
+				# Skip further messages if we already found one error from this NS for this domain
+				next if (defined($ckseen->{$domain}->{$ns}));
+				$errormsg .= "$domain: NS ".$rr->{nsdname}." from $ns not in allowed list. ";
+				$ckseen->{$domain}->{$ns} = 1;
+			}
+		}
+		$ckseen->{$domain}->{$ns} = 1;
+	}
+}
+
