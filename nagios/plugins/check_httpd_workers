@@ -73,8 +73,7 @@ $np->add_arg(
 	help => "-w, --warning=THRESHOLD\n"
 	   . "   Warning threshold for total number of workers (Busy + Idle). See:\n"
 	   . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
-	   . "   for the threshold format. If -P, --perfdata is specified, thresholds apply\n"
-	   . '   to the generated average.',
+	   . '   for the threshold format.',
 	required => 0,
 );
 
@@ -83,8 +82,7 @@ $np->add_arg(
 	help => "-c, --critical=THRESHOLD\n"
 	   . "   Critical threshold for total number of workers (Busy + Idle). See\n"
 	   . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
-	   . "   for the threshold format. If -P, --perfdata is specified, thresholds apply\n"
-	   . '   to the generated average.',
+	   . '   for the threshold format.',
 	required => 0,
 );
 
@@ -93,8 +91,7 @@ $np->add_arg(
 	help => "-b, --wbusy=THRESHOLD\n"
 	   . "   Warning threshold for number of Busy workers. See:\n"
 	   . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
-	   . "   for the threshold format. If -P, --perfdata is specified, thresholds apply\n"
-	   . '   to the generated average.',
+	   . '   for the threshold format.',
 	required => 0,
 );
 
@@ -103,8 +100,7 @@ $np->add_arg(
 	help => "-B, --cbusy=THRESHOLD\n"
 	   . "   Critical threshold for number of Busy workers. See\n"
 	   . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
-	   . "   for the threshold format. If -P, --perfdata is specified, thresholds apply\n"
-	   . '   to the generated average.',
+	   . '   for the threshold format.',
 	required => 0,
 );
 
@@ -113,8 +109,7 @@ $np->add_arg(
 	help => "-i, --widle=THRESHOLD\n"
 	   . "   Warning threshold for number of Idle workers. See:\n"
 	   . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
-	   . "   for the threshold format. If -P, --perfdata is specified, thresholds apply\n"
-	   . '   to the generated average.',
+	   . '   for the threshold format.',
 	required => 0,
 );
 
@@ -123,8 +118,7 @@ $np->add_arg(
 	help => "-I, --cidle=THRESHOLD\n"
 	   . "   Critical threshold for number of Idle workers. See\n"
 	   . "   http://nagiosplug.sourceforge.net/developer-guidelines.html#THRESHOLDFORMAT\n"
-	   . "   for the threshold format. If -P, --perfdata is specified, thresholds apply\n"
-	   . '   to the generated average.',
+	   . '   for the threshold format.',
 	required => 0,
 );
 
