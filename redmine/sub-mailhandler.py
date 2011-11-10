@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # sub-mailhandler.py - frontend for rdm-mailhandler.rb
-# v.1.0.1
+# v.1.0.2
 #
 # This script parses the header of a message until it finds a known email;
 # then use that email to look for a subaddress pattern that provides a
@@ -13,7 +13,7 @@
 # is used to determine the project. A default ptoject can be specified.
 #
 #
-# Copyright 2010 Thomas Guyot-Sionnest <tguyot@gmail.com>
+# Copyright 2010-2011 Thomas Guyot-Sionnest <tguyot@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
