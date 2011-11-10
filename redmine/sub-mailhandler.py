@@ -31,6 +31,7 @@
 
 import sys
 import email
+from email import parser, message, utils
 from optparse import OptionParser
 from subprocess import Popen, PIPE
 
