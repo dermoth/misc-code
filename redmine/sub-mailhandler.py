@@ -39,7 +39,7 @@ oparser = OptionParser(usage='%prog -h | -e <email> [ -p <project> ] -- <command
                       description='''The <command-line> portion is the full
 rdm-mailhandler.rb command that would normally be executed as the mail
 handler. The full path to the executable is required. This command should not
-include a project; use the build-in --project argument instead.''')
+include a project; use the built-in --project argument instead.''')
 
 oparser.add_option('-e', '--email', type='string', dest='email',
                   help='Known email to look for (i.e. redmine recipient)')
