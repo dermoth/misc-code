@@ -84,9 +84,10 @@ msg = eo.parsestr(buf, headersonly=True)
 # Fetch all email addresses out of them...
 tos = msg.get_all('to', [])
 ccs = msg.get_all('cc', [])
+delivered_tos = msg.get_all('delivered-to',[])
 resent_tos = msg.get_all('resent-to', [])
 resent_ccs = msg.get_all('resent-cc', [])
-all_recipients = email.utils.getaddresses(tos + ccs + resent_tos + resent_ccs)
+all_recipients = email.utils.getaddresses(tos + ccs + delivered_tos + resent_tos + resent_ccs)
 
 # And look for a matching one
 project = None
