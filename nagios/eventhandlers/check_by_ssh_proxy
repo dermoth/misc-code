@@ -1,0 +1,31 @@
+#!/bin/bash
+#
+# Check_by_ssh proxy - use the nrpe.cfg to perform check_by_ssh checks
+# Version: 0.9
+# Author: Thomas Guyot-Sionnest <thomas@gmail.com>
+#
+# Usage: Call this script usign an an ssh key (command="..." <public_key>)
+#        Then on the nagios server, run check_by_ssh with the command set
+#        to your check_nrpe command.
+#
+# Bugs: - Arguments not yet supported
+#
+# This script is released in the public domain.
+#
+
+## CONFIG
+
+NRPE_CONF="/usr/local/nagios/etc/nrpe.cfg"
+
+##
+
+while read line
+do
+	[[ $line =~ ^[[:space:]]*command\[$SSH_ORIGINAL_COMMAND\][[:space:]]*=[[:space:]]*(.+)$ ]] || continue
+
+	exec ${BASH_REMATCH[1]}
+done <"$NRPE_CONF"
+
+echo "UNKNOWN: Command '$SSH_ORIGINAL_COMMAND' not found."
+exit 3
+
