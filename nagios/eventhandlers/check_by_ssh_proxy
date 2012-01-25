@@ -9,6 +9,7 @@
 #        to your check_nrpe command.
 #
 # Bugs: - Arguments not yet supported
+#       - RE metachars in $SSH_ORIGINAL_COMMAND should be escaped
 #
 # This script is released in the public domain.
 #
