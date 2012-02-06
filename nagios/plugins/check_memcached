@@ -2,22 +2,30 @@
 <?php
 /*
  * check_memcached - PHP plugin for checking evictions and ratio of Memcached
- * v.1.0.2
+ * v.1.1.0
  *
  * This script query stats on a Memcached server to get the average number of
  * evictions per minute and cache hit ratio.
  *
- * Copyright (C) 2009-2010 Thomas Guyot-Sionnest <tguyot@gmail.com>
+ * Copyright (C) 2009-2012 Thomas Guyot-Sionnest <tguyot@gmail.com>
+ *
+ * BUGS: The code is ugly - adding per-slab stuff should have been a full
+ *       rewrite but I guess it's too late now.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
+ * as published by the Free Software Foundation; either version 3
  * of the License, or (at your option) any later version.
  *
  */
 
+ini_set('track_errors', true);
+
+// State files directory
+$np_statedir = '/tmp/np_state';
+
 // Default memcached port
-$port=11211;
+$port = 11211;
 
 // Nagios=plugins variables
 $progname = str_replace('check_', '', basename($_SERVER["SCRIPT_NAME"]));
@@ -27,27 +35,24 @@ $errors = array(
 	1 => 'WARNING',
 	2 => 'CRITICAL',
 	3 => 'UNKNOWN',
+	4 => 'DEPENDENT',
 );
 $errorstr = array_flip($errors);
 foreach (array_keys($errorstr) as $key) {
 	define('STATE_'.$key, $errorstr[$key]);
 }
 
-$shortopts = 'H:p:w:c:P:W:C:hv';
+// P: is there for backwards compatibility and is ignored.
+$shortopts = 'H:p:P:iIw:c:W:C:e:E:d:D:hv';
 
 $options = getopt($shortopts);
 
+unset($options['P']);
 if (isset($options['h']))
 	np_help();
 
 if (!isset($options['H']))
 	np_help('You must specify a hostname!');
-
-if (!isset($options['w']) && !isset($options['c']))
-	np_help('You must specify at least warning or critical threshold');
-
-if (!isset($options['P']))
-	np_help('You must pass a performance data string');
 
 if (!isset($options['p']))
 	$options['p'] = $port;
@@ -60,13 +65,53 @@ if (!isset($options['v']))
 	$options['v'] = array();
 
 $th_err = false;
-foreach (array('w', 'c', 'W', 'C') as $th) {
+foreach (array('w', 'c', 'W', 'C', 'e', 'E', 'd', 'D') as $th) {
 	if (isset($options[$th]) && !is_numeric($options[$th])) {
 		echo 'Error: -'.$th.': Invalid number: '.$options[$th]."\n";
 		$th_err = true;
 	}
 }
 if ($th_err) np_help('Invalid threshold');
+
+if (isset($options['e']) || isset($options['E'])) {
+	$perslab = true;
+} else {
+	if (isset($options['d']) || isset($options['D']))
+		np_help('Options -d/-D invalid without -e or -E');
+	$perslab = false;
+}
+
+// Build the statefile filename, and open it
+$pwent=posix_getpwuid(posix_geteuid());
+$savefile = $np_statedir.'/state.'.basename($_SERVER['PHP_SELF']).'.'.$pwent['name'].'.'.md5(serialize($options));
+
+if (count($options['v'])>=2) echo "Openning/creating state-retension file ($savefile)\n";
+$oldmask = umask(0);
+is_dir($np_statedir) or mkdir($np_statedir, 01777) or np_exit(STATE_UNKNOWN, 'Failed to create state directory');
+umask($oldmask);
+$file = fopen($savefile, 'c+') or np_exit(STATE_UNKNOWN, 'Error openning state retention file: '.$php_errormsg);
+flock($file, LOCK_EX) or np_exit(STATE_UNKNOWN, 'State retention file locked');
+
+# Get the data - should fit on one 64k line...
+$fdata = fgets($file, 65536);
+rewind($file);
+if ($fdata === false) {
+	// Get empty string if the file has 0-length
+	$filestat = fstat($file);
+	if ($filestat['size'] !== 0) np_exit(STATE_UNKNOWN, 'Failed to read retention file');
+	$fdata = '';
+}
+if (count($options['v'])>=3) echo "Read line from statefile: .$fdata.\n";
+$state = safe_unserialize($fdata) or $state = array();
+if (count($options['v'])>=3) echo 'Serialized state data: .'.serialize($state).".\n";
+
+/* State data format:
+ * Array['_ts']: last timestamp
+ * Array['Stats'][Key]
+ * Array['StatsItems'][SlabID][Key]
+ * SlabID is the slab number
+ * Key can be any key from the relevant stats
+ */
 
 // Prepare runtime variables
 $ret = STATE_OK;
@@ -76,98 +121,233 @@ $perfstr = '';
 if ($options['v']) echo "Connecting to memcached\n";
 $memcache1 = @memcache_connect($options['H'], $options['p']);
 
+if (!$memcache1) {
+	np_exit(STATE_CRITICAL, 'Connection to memcached failed');
+}
+
+if ($options['v']) echo "Connected, getting stats\n";
+$stats = $memcache1->getstats();
+if ($perslab) {
+	$statsitems = $memcache1->getstats('items');
+} else {
+	$statsitems = true; //Fake!
+}
+if (!$stats || !$statsitems) {
+	np_exit(STATE_UNKNOWN, 'Memcached getstats failed');
+}
+
+if (count($options['v'])>=3) {
+	var_dump($stats);
+	if ($perslab) var_dump($statsitems);
+}
+
 // Prepare eviction counter
 $now = time();
-if (count($options['v'])>=2) echo "Parsing performance data (now: $now)\n";
-$last = parse_last($options['P']);
-if (count($options['v'])>=3) var_dump($last);
 
-if ($memcache1) {
-	if ($options['v']) echo "Connected, getting stats\n";
-	$stats = $memcache1->getstats();
-	if (count($options['v'])>=3) var_dump($stats);
+$evictions = false;
+ if (isset($state['_ts'])) {
+	// We have values to compare - can't divide by zero though
+	if ($now == $state['_ts']) {
+		np_exit(STATE_UNKNOWN, 'Last and current times are the same!');
+	}
+	$evictions = sprintf("%.06f", 60 * ($stats['evictions'] - $state['Stats']['evictions']) / ($now - $state['_ts']));
+	if ($evictions >= 0) {
+		if (count($options['v'])>=2) echo "Evictions: $evictions per minute (".($stats['evictions'] - $state['Stats']['evictions']).")\n";
+		$perfstr .= ' evictions='.$evictions.';'.(isset($options['w']) ? $options['w'] : '').';'.(isset($options['c']) ? $options['c'] : '').';;';
 
-	$hit_ratio = sprintf("%.06f",$stats['get_hits']/($stats['get_hits']+$stats['get_misses'])*100);
-	if (count($options['v'])>=2) echo "Hit ratio: $hit_ratio%\n";
-
-	$evictions = false;
-	if (count($last) == 2) {
-		// We have values to compare - can't divide by zero though
-		if ($now == $last[0]) {
-			np_exit(STATE_UNKNOWN, 'MEMCACHED UNKNOWN - Last and current times are the same!');
+		// Check against thresholds
+		if (isset($options['c']) && $evictions > $options['c']) {
+			$msg .= 'Evictions over '.$options['c'].'/min ('.round($evictions,2).'), ';
+			$ret = np_max_state_alt($ret, STATE_CRITICAL);
+		} else if (isset($options['w']) && $evictions > $options['w']) {
+			$msg .= 'Evictions over '.$options['w'].'/min ('.round($evictions,2).'), ';
+			$ret = np_max_state_alt($ret, STATE_WARNING);
+		}	else if (isset($options['c']) || isset($options['w'])) {
+			$msg .= 'Evictions OK ('.round($evictions,2).'/min), ';
 		}
-		
-		$evictions = sprintf("%.06f", 60 * ($stats['evictions'] - $last[1]) / ($now - $last[0]));
+	} else { // $evictions <= 0
+		$msg .= 'Evictions unknown, ';
+		$ret = np_max_state_alt($ret, STATE_UNKNOWN);
 	}
-	if (count($options['v'])>=2) echo "Evictions: $evictions per minute (".($stats['evictions'] - $last[1]).")\n";
-
-	// Check against thresholds
-	if ($evictions === false) {
-		$msg = 'Evictions unknown, ';
-		$ret = STATE_UNKNOWN;
-	}
-	else if (isset($options['c']) && $evictions > $options['c']) {
-		$msg = 'Evictions over '.$options['c'].'/min, ';
-		$ret = STATE_CRITICAL;
-	}
-	else if (isset($options['w']) && $evictions > $options['w']) {
-		$msg = 'Evictions over '.$options['w'].'/min, ';
-		$ret = STATE_WARNING;
-	}
-
-	if (isset($options['C']) && $hit_ratio < $options['C']) {
-		$msg .= 'Hit ratio is under '.$options['C'].'%, ';
-		$ret = STATE_CRITICAL;
-	}
-	else if (isset($options['W']) && $hit_ratio < $options['W']) {
-		$msg = 'Hit ratio is under '.$options['W'].'%, ';
-		$ret = $ret != STATE_CRITICAL ? STATE_WARNING : $ret;
-	}
-	if ($ret == STATE_OK) {
-		$msg = 'Cache is within thresholds';
-	}
-	else if (strlen($msg) > 2) {
-		// Cleanup $msg if needed
-		$msg = substr($msg, 0, -2);
-	}
-
-	// eviction counter stats (if they're available)
-	if (isset($stats['evictions'])) {
-		$perfstr = 'time='.$now.' last='.$stats['evictions'];
-	}
-	// Other stats
-	if ($evictions !== false)
-		$perfstr .= ' evictions='.($evictions === false || $evictions < 0 ? 'NaN' : $evictions).';'.(isset($options['w']) ? $options['w'] : '').';'.(isset($options['c']) ? $options['c'] : '').';;';
-	$perfstr .= ' ratio='.$hit_ratio.'%;'.(isset($options['W']) ? $options['W'] : '').';'.(isset($options['C']) ? $options['C'] : '').';;';
-	np_exit($ret, $msg.' (evict: '.($evictions === false || $evictions < 0 ? 'NaN' : sprintf("%.02f",$evictions)).'/min, hit: '.sprintf("%.02f",$hit_ratio).'%)|'.$perfstr);
-} else {
-	if (count($last) == 2) {
-		$perfstr = 'time='.$last[0].' last='.$last[1];
-	}
-	np_exit(STATE_CRITICAL, 'Connection to memcached failed|'.$perfstr);
+} else { // No state timestamp
+	$msg .= 'Evictions unknown on first check, ';
+	$ret = np_max_state_alt($ret, STATE_UNKNOWN);
 }
+// Update saved state
+$state['Stats']['evictions'] = $stats['evictions'];
+
+// Calculate hit ratio
+$hit_ratio = sprintf("%.06f",$stats['get_hits']*100/($stats['get_hits']+$stats['get_misses']));
+if (count($options['v'])>=2) echo "Hit ratio: $hit_ratio%\n";
+$perfstr .= ' ratio='.$hit_ratio.'%;'.(isset($options['W']) ? $options['W'] : '').';'.(isset($options['C']) ? $options['C'] : '').';;';
+
+if (isset($options['C']) && $hit_ratio < $options['C']) {
+	$msg .= 'Hit ratio is under '.$options['C'].'% ('.round($hit_ratio,2).'%), ';
+	$ret = np_max_state_alt($ret, STATE_CRITICAL);
+}	else if (isset($options['W']) && $hit_ratio < $options['W']) {
+	$msg .= 'Hit ratio is under '.$options['W'].'% ('.round($hit_ratio,2).'%), ';
+	$ret = np_max_state_alt($ret, STATE_WARNING);
+} else {
+	$msg .= 'Ratio OK ('.round($hit_ratio,2).'%), ';
+}
+
+if ($perslab) {
+	// Also check per slab
+	$slabrc = false;
+	foreach ($statsitems['items'] as $slab => $itemstats) {
+		if (isset($state['_ts'])) {
+			$sevt = sprintf("%.06f", 60 * ($itemstats['evicted'] - $state['StatsItems'][$slab]['evicted']) / ($now - $state['_ts']));
+			$sevt_nz = sprintf("%.06f", 60 * ($itemstats['evicted_nonzero'] - $state['StatsItems'][$slab]['evicted_nonzero']) / ($now - $state['_ts']));
+			// Evcts of infinite ttl
+			$sevt_inf = $sevt - $sevt_nz;
+
+			if (isset($options['i'])) {
+				// Monitor only $sevt_nz
+				$sevictions = $sevt_nz;
+				$sedescr = 'non-zero';
+				$seperf = '_nz';
+			} else if (isset($options['I'])) {
+				// Monitor only $sevt_inf
+				$sevictions = $sevt_inf;
+				$sedescr = 'non-expiring';
+				$seperf = '_ne';
+			} else {
+				// Monitor all evictions
+				$sevictions = $sevt;
+				$sedescr = 'total';
+				$seperf = '';
+				}
+			if (count($options['v'])>=2) {
+				echo "Slab #$slab evictions: $sevt per minute (".($itemstats['evicted'] - $state['StatsItems'][$slab]['evicted']) / ($now - $state['_ts']).")\n";
+				echo "Slab #$slab nonzero evictions: $sevt_nz per minute (".($itemstats['evicted'] - $state['StatsItems'][$slab]['evicted']) / ($now - $state['_ts']).")\n";
+				echo "Slab #$slab non-expiring evictions: $sevt_inf per minute (".($itemstats['evicted'] - $state['StatsItems'][$slab]['evicted']) / ($now - $state['_ts']).")\n";
+				echo "Slab #$slab Last-evicted: ".$itemstats['evicted_time']." seconds ago\n";
+				echo "Slab #$slab Selected metric: $sedescr evictions: $sevictions\n";
+			}
+			// Check only if evictions are greater than 0 (if not the global check should already point it out)
+			if ($sevt >= 0 && $sevt_nz >= 0 && $sevt_inf >= 0) {
+				if ($slabrc === false) $slabrc = 0; // Initialize slabrc to 0 (slabs being checked, 0 errors so far)
+
+				// Check evict date ? $evct_mask either a "result mask" or false
+				if (isset($options['d']) || isset($options['D'])) {
+					if (isset($options['D']) && $itemstats['evicted_time'] < $options['D']) {
+						$evct_mask = STATE_CRITICAL;
+					} else if (isset($options['d']) && $itemstats['evicted_time'] < $options['d']) {
+						$evct_mask = STATE_WARNING;
+					} else {
+						$evct_mask = STATE_OK;
+					}
+					$perfstr .= ' evct'.$slab.$seperf.'_time='.$itemstats['evicted_time'].';'.(isset($options['d']) ? $options['d'] : '').';'.(isset($options['D']) ? $options['D'] : '').';;';
+				} else {
+					$evct_mask = false;
+				} // endif isset($options['d']) || isset($options['D'])
+
+				// Check against thresholds
+				if (isset($options['E']) && $sevictions > $options['E']) {
+					if ($evct_mask !== false) {
+						$msg .= "Slab $slab $sedescr evictions over ".$options['E'].'/min ('.round($sevictions,2).', last: '.$itemstats['evicted_time'].'s ago), ';
+						$ret = np_max_state_alt($ret, my_np_min_state_alt($evct_mask, STATE_CRITICAL));
+						$slabrc++;
+					} else {
+						$msg .= "Slab $slab $sedescr evictions over ".$options['E'].'/min, ';
+						$ret = np_max_state_alt($ret, STATE_CRITICAL);
+						$slabrc++;
+					}
+				} else if (isset($options['e']) && $sevictions > $options['e']) {
+					if ($evct_mask !== false) {
+						$msg .= "Slab $slab $sedescr evictions over ".$options['e'].'/min ('.round($sevictions,2).', last: '.$itemstats['evicted_time'].'s ago), ';
+						$ret = np_max_state_alt($ret, my_np_min_state_alt($evct_mask, STATE_WARNING));
+						$slabrc++;
+					} else {
+						$msg .= "Slab $slab $sedescr evictions over ".$options['e'].'/min, ';
+						$ret = np_max_state_alt($ret, STATE_WARNING);
+						$slabrc++;
+					}
+				}
+				$perfstr .= ' evct'.$slab.$seperf.'='.$sevictions.';'.(isset($options['w']) ? $options['w'] : '').';'.(isset($options['c']) ? $options['c'] : '').';;';
+			} // endif $sevt >= 0 && $sevt_nz >= 0 && $sevt_inf >= 0
+		} // endif isset($state['_ts'])
+		// Update saved state
+		$state['StatsItems'][$slab]['evicted'] = $itemstats['evicted'];
+		$state['StatsItems'][$slab]['evicted_nonzero'] = $itemstats['evicted_nonzero'];
+	} // foreach item stats
+	if ($slabrc === 0 && $evictions !== false) {
+		// The slab check ran with no errors, and $evictions should be always set if we got this far
+		$msg .= 'Slab evictions OK ('.round($evictions,2).'/min), ';
+	}
+}
+
+// Save new timestamp and the state file
+$state['_ts'] = $now;
+fwrite($file, serialize($state)) or np_exit(STATE_UNKNOWN, 'Write error on state file');
+fclose($file);
+
+
+// Remove last comma from $msg
+if (strlen($msg) > 2) {
+	// Cleanup $msg if needed
+	$msg = substr($msg, 0, -2);
+}
+
+np_exit($ret, $msg.'|'.$perfstr);
 
 exit(STATS_UNKNOWN); // rly?!
 
-function parse_last($str) {
-	// Parse the performance data string and return an array consisting of the
-	// last timestamp (time=) and last value (last=).
-	$last = array();
-	$perfitems = explode(' ', $str);
-	for ($i = 0; $i < count($perfitems); $i++){
-		$idx=-1;
-		if (strpos($perfitems[$i], 'time=') === 0) {
-			$idx=0;
-		} else if (strpos($perfitems[$i], 'last=') === 0) {
-			$idx=1;
-		}
-		if ($idx != -1) {
-			$val = substr($perfitems[$i], 5);
-			$len = strspn($val, '1234567890');
-			$last[$idx] = substr($val, 0, $len);
+function my_np_min_state_alt() {
+	// Minimum state alt - reverse of np_max_state_alt - used to apply masks
+	$args = func_get_args();
+	if (false !== array_search(STATE_OK, $args, true)) return STATE_OK;
+	if (false !== array_search(STATE_DEPENDENT, $args, true)) return STATE_DEPENDENT;
+	if (false !== array_search(STATE_UNKNOWN, $args, true)) return STATE_UNKNOWN;
+	if (false !== array_search(STATE_WARNING, $args, true)) return STATE_WARNING;
+	if (false !== array_search(STATE_CRITICAL, $args, true)) return STATE_CRITICAL;
+	return UNKNOWN;
+}
+
+/**
+* mixed safe_unserialize(string $serialized)
+* Safely unserialize, that is only unserialize string, numbers and arrays, not objects
+*
+* @license Public Domain
+* @author dcz (at) phpbb-seo (dot) com
+*/
+function safe_unserialize($serialized) {
+	// unserialize will return false for object declared with small cap o
+	// as well as if there is any ws between O and :
+	if (is_string($serialized) && strpos($serialized, "\0") === false) {
+		if (strpos($serialized, 'O:') === false) {
+			// the easy case, nothing to worry about
+			// let unserialize do the job
+			return @unserialize($serialized);
+		} else if (!preg_match('/(^|;|{|})O:[0-9]+:"/', $serialized)) {
+			// in case we did have a string with O: in it,
+			// but it was not a true serialized object
+			return @unserialize($serialized);
 		}
 	}
-	return($last);
+	return false;
+}
+
+function np_max_state() {
+	// Original Nagiosplug max_state - OK overrides UNKNOWN & DEPENDENT
+	$args = func_get_args();
+	if (false !== array_search(STATE_CRITICAL, $args, true)) return STATE_CRITICAL;
+	if (false !== array_search(STATE_WARNING, $args, true)) return STATE_WARNING;
+	if (false !== array_search(STATE_OK, $args, true)) return STATE_OK;
+	if (false !== array_search(STATE_UNKNOWN, $args, true)) return STATE_UNKNOWN;
+	if (false !== array_search(STATE_DEPENDENT, $args, true)) return STATE_DEPENDENT;
+	return STATE_UNKNOWN;
+}
+
+function np_max_state_alt() {
+	// Alternate Nagiosplug max_state - OK last
+	$args = func_get_args();
+	if (false !== array_search(STATE_CRITICAL, $args, true)) return STATE_CRITICAL;
+	if (false !== array_search(STATE_WARNING, $args, true)) return STATE_WARNING;
+	if (false !== array_search(STATE_UNKNOWN, $args, true)) return STATE_UNKNOWN;
+	if (false !== array_search(STATE_DEPENDENT, $args, true)) return STATE_DEPENDENT;
+	if (false !== array_search(STATE_OK, $args, true)) return STATE_OK;
+	return UNKNOWN;
 }
 
 function np_exit($status, $text) {
@@ -185,28 +365,47 @@ function np_help($errstr = false) {
 		echo 'Error: '.$errstr."\n\n";
 	}
 
-	echo 'Usage: check_'.$progname." -H <host> [-p <port>] -w <warning> -c <critical>\n";
-	echo "       -P <perfdata> [-W <ratio_warn>] [-c <ratio_crit>]\n";
+	echo 'Usage: check_'.$progname." -H <host> [-p <port>] [-i|-I]\n";
+	echo "       [-w <warning>] [-c <critical>] [-W <ratio_warn>] [-C <ratio_crit>]\n";
+	echo "       [-e <slab_warn>] [-E <slab_crit> [-d <time_warning>] [-D <time_critical>]\n";
 	echo "\n";
 	echo "Options:\n";
 	echo "  -H STRING\n";
 	echo "    Host to connect to.\n";
 	echo "  -p INTEGER\n";
 	echo "    Port to connect to (default: ".$port.").\n";
+	echo "  -i\n";
+	echo "    Ignore evictions of keys which do not expire.\n";
+	echo "  -I\n";
+	echo "    Ignore evictions of keys which have an expiration time. It's unlikely one\n";
+	echo "    would want this except to complement monitoring of expiring keys (-i)\n";
 	echo "  -w DOUBLE\n";
 	echo "    Warning threshold for evictions per minute.\n";
 	echo "  -c DOUBLE\n";
 	echo "    Critical threshold for evictions per minute.\n";
-	echo "  -P STRING\n";
-	echo "    Perfdata string from previous check, needed to calculate evictions.\n";
 	echo "  -W DOUBLE\n";
 	echo "    Warning threshold for hit ratio (percent, higher is better).\n";
 	echo "  -C DOUBLE\n";
 	echo "    Critical threshold for hit ratio (percent, higher is better).\n";
+	echo "  -e DOUBLE\n";
+	echo "    Warning threshold for per-slab evictions per minute.\n";
+	echo "  -E DOUBLE\n";
+	echo "    Critical threshold for per-slab evictions per minute.\n";
+	echo "  -d INTEGER\n";
+	echo "    Warning threshold for per-slab eviction time in seconds.\n";
+	echo "  -D DOUBLE\n";
+	echo "    Critical threshold for per-slab eviction time in seconds.\n";
 	echo "  -h\n";
 	echo "    This help message\n";
 	echo "  -v\n";
 	echo "    Print debug messages (can be repeated up to three times)\n";
+	echo "\n";
+	echo "Notes:\n";
+	echo "  - If one of '-d' or '-D' is set, the per-slab thresholds ('-e' and '-E')\n";
+	echo "    will be triggered only up to the evicition time thresholds. No alerts will\n";
+	echo "    be sent for evictions are for keys older than the defined thresholds.\n";
+	echo "  - The '-i' and '-I' switches are mutually exclusive. The default is to\n";
+	echo "    consider all evictions.\n";
 	echo "\n";
 
 	exit(STATE_UNKNOWN);
