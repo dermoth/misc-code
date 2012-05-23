@@ -165,7 +165,7 @@ else:
     nsca_res="%s%s%i%s%s\n" % (host, delim, ck_rc[1], delim, ck_res)
 
 res_sent = True
-if verbose: print 'running send_nsca:', nsca_cm
+if verbose: print 'running send_nsca:', nsca_cmd
 try:
     ncmd = Popen(nsca_cmd, stdin=PIPE, stdout=sys.stdout, stderr=sys.stderr, shell=False)
 except OSError, e:
