@@ -37,7 +37,7 @@ import getopt
 from subprocess import Popen, PIPE
 
 PROGNAME = 'nsca_wrapper'
-VERSION = 'v1.0'
+VERSION = 'v1.1'
 
 def prnt_help(msg=None):
     if msg: print 'Error: '+str(msg)+'\n'
@@ -133,11 +133,12 @@ except IOError, e:
     print 'Error reading from plugin:', e
 
 ck_rc = os.waitpid(cmd.pid, 0)
+ck_result = ck_rc[1] >> 8
 
 if verbose:
     print 'result:', ck_res.rstrip('\n')
     print 'extra:', ck_extra
-    print 'code:', ck_rc
+    print 'code:', ck_result
 
 if len(ck_extra) > 0:
     print "Extra lines returned (won't be passed to send_nsca):"
@@ -160,9 +161,9 @@ if s_config:
     nsca_cmd.append(s_config)
 
 if service:
-    nsca_res="%s%s%s%s%i%s%s\n" % (host, delim, service, delim, ck_rc[1], delim, ck_res)
+    nsca_res="%s%s%s%s%i%s%s\n" % (host, delim, service, delim, ck_result, delim, ck_res)
 else:
-    nsca_res="%s%s%i%s%s\n" % (host, delim, ck_rc[1], delim, ck_res)
+    nsca_res="%s%s%i%s%s\n" % (host, delim, ck_result, delim, ck_res)
 
 res_sent = True
 if verbose: print 'running send_nsca:', nsca_cmd
