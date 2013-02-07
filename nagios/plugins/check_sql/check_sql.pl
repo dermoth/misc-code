@@ -2,15 +2,23 @@
 #
 # check_sql  -  Run a simple test query against a SQL Server
 #
-# For MySQL this script requires DBD::mysql.
-#
 # Note: Driver-specific timeouts aren't implemented because
 #   1. It doesn't work as expected on DBD::mysql
 #   2. DBD::Sybase defaults to 60 seconds which is enough for most people
+#   3. DBD::Pg doesn't even specify a timeout option
 #
-# For MSSQL this script requires the FreeTDS library and DBD::Sybase Perl
-# module. The SYBASE environment variable also needs to be defined.
-# Make sure FreeTDS is compiled with --with-tdsver=8.0 !!!
+# Tested drivers can be loaded implicitely by running this plugin as:
+#  * check_mysql (MySQL - DBD::mysql)
+#  * check_pgsql (PostgreSQL - DBD::Pg)
+#  * check_mssql (Microsoft SQL Server - DBD::Sybase)
+#
+# For MySQL (check_mysql) this script requires the DBD::mysql Perl module.
+#
+# For PostgreSQL (check_pgsql) this script requires the DBD::Pg Perl module.
+#
+# For MSSQL (check_mssql) this script requires the FreeTDS library and the
+# DBD::Sybase Perl module. The SYBASE environment variable also needs to be
+# defined. Make sure FreeTDS is compiled with --with-tdsver=8.0 !!! YMMV.
 #
 # Other drivers are untested.
 #
@@ -44,7 +52,7 @@ use Time::HiRes qw(gettimeofday tv_interval);
 use DBI;
 
 $PROGNAME = basename($0);
-$VERSION = '0.9.4';
+$VERSION = '0.9.5';
 $QSTRING = 'SELECT 1 AS Response';
 $LABEL = 'result';
 
@@ -54,6 +62,8 @@ my $driver;
 my $driverarg = '';
 if ($PROGNAME =~ /check_mysql/) {
   $driver = 'mysql';
+} elsif ($PROGNAME =~ /check_pgsql/) {
+  $driver = 'Pg';
 } elsif ($PROGNAME =~ /check_mssql/) {
   $driver = 'Sybase';
 } else {
@@ -80,7 +90,7 @@ $np->add_arg(
 );
 
 if ($driverarg) {
-  # This argument is omited if the driver is set fie the basename (above).
+  # This argument is omited if the driver is set from the basename (above).
   $np->add_arg(
     spec => 'driver|d=s',
     help => "-d, --driver=<driver>\n"
