@@ -52,7 +52,7 @@ use Time::HiRes qw(gettimeofday tv_interval);
 use DBI;
 
 $PROGNAME = basename($0);
-$VERSION = '0.9.5';
+$VERSION = '1.0.0';
 $QSTRING = 'SELECT 1 AS Response';
 $LABEL = 'result';
 
