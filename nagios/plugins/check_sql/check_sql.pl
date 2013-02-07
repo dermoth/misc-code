@@ -44,7 +44,7 @@ use Time::HiRes qw(gettimeofday tv_interval);
 use DBI;
 
 $PROGNAME = basename($0);
-$VERSION = '0.9.3';
+$VERSION = '0.9.4';
 $QSTRING = 'SELECT 1 AS Response';
 $LABEL = 'result';
 
@@ -227,10 +227,10 @@ $np->nagios_exit('UNKNOWN', 'Password is required.')
   if ($password eq '');
 
 $np->nagios_exit('UNKNOWN', '-e cannot be used with -W or -C')
-  if ($expect && ($rwarning || $rcritical));
+  if (defined($expect) && ($rwarning || $rcritical));
 
 $np->nagios_exit('UNKNOWN', '-r have no effect without -e')
-  if ($regexp && !$expect);
+  if ($regexp && !defined($expect));
 
 $np->nagios_exit('UNKNOWN', 'LABEL must be defined if UOM is used')
   if ($uom && !$label);
@@ -307,9 +307,9 @@ if ($uom && $result =~ /^[-+]?\d+$/) {
 }
 
 # First check expect strings (if defined) as they always return CRITICAL
-if ($expect && $regexp) {
+if (defined($expect) && $regexp) {
   $np->nagios_exit('CRITICAL', "Unexpected $label" . ($show ? ": $result" : '')) unless ($result =~ /$expect/);
-} elsif ($expect) {
+} elsif (defined($expect)) {
   $np->nagios_exit('CRITICAL', "Unexpected $label" . ($show ? ": $result" : '')) if ($result ne $expect);
 }
 
