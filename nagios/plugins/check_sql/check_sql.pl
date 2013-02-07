@@ -16,8 +16,8 @@
 #
 # It also requires File:::Basename, Nagios::Plugins and Time::HiRes.
 #
-# Copyright (c) 2007 Thomas Guyot-Sionnest <tguyot@gmail.com>
-# Copyright (c) 2007 Nagios Plugin Development Team
+# Copyright (c) 2007-2013 Thomas Guyot-Sionnest <tguyot@gmail.com>
+# Copyright (c) 2007-2013 Nagios Plugin Development Team
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
