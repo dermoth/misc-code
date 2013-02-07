@@ -10,7 +10,7 @@
 # It works by using an email of the form:
 # <user+project@example.com>
 # Most mail servers will deliver this to <user@example.com>, so the + part
-# is used to determine the project. A default ptoject can be specified.
+# is used to determine the project. A default project can be specified.
 #
 #
 # Copyright 2010-2011 Thomas Guyot-Sionnest <tguyot@gmail.com>
