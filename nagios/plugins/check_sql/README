@@ -1,9 +1,10 @@
-  CHECK_SQL v.0.9.3  -  README
+  CHECK_SQL v.1.0.0  -  README
 
 check_sql is a database-independent SQL check written in Perl. It can
 check any database by specifying the Perl driver to use, and support
-hard-coded MSSQL and MySQL modes when called as check_mssql and
-check_mysql respectively (i.e. using symlinks).
+hard-coded MySQL, PostgreSQL and Mycrosoft SQL modes when called as
+check_mysql, check+_pgsql and check_mssql respectively (ex. using
+symlinks).
 
 By default check_sql only runs the query "SELECT 1 AS Response". The
 query can be customized (you can also run sprocs which can do in-depth
@@ -77,13 +78,16 @@ supported:
 
 Requirements:
 
-This plugins requires at the very least Nagios::Plugin, Time::HiRes and one DBI driver.
+This plugin requires at the very least File:::Basename, Nagios::Plugin,
+Time::HiRes and one DBI driver.
 
-For MSSQL it requires FreeTDS and the DBD::Sybase driver. Make sure FreeTDS is compiled with --with-tdsver=8.0
+For MySQL (check_mysql) this script requires the DBD::mysql Perl module.
 
-http://www.freetds.org/
+For PostgreSQL (check_pgsql) this script requires the DBD::Pg Perl module.
 
-For MySQL, it requires the MySQL libraries and DBD::mysql.
+For MSSQL (check_mssql) this script requires the FreeTDS library and the
+DBD::Sybase Perl module. The SYBASE environment variable also needs to be
+defined. Make sure FreeTDS is compiled with --with-tdsver=8.0.
 
 Below is simply a copy of check_sql header.
 --------------------------------------------------------------------------
