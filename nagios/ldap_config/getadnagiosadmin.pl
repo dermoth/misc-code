@@ -2,7 +2,7 @@
 #
 # getadnagiosadmin.pl  -  See updatenagiosadmin.pl.
 #
-# Version 1.01
+# Version 1.02
 #
 # Copyright (C) 2008 Thomas Guyot-Sionnest <tguyot@gmail.com>
 #
@@ -21,14 +21,16 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #
 
-# Version 1.01
 
+use strict;
+use warnings;
 use Net::LDAP;
 use Net::LDAP::Control::Paged;
 use Net::LDAP::Constant qw(LDAP_CONTROL_PAGED);
-use strict;
-use warnings;
 
+use FindBin qw($Bin);
+use lib "$Bin";
+use ldapconfig qw($dc1 $dc2 $hqbase $user $passwd $timeout);
 
 ## CONFIG SECTION ##
 
@@ -38,21 +40,12 @@ my $alias = 'Nagios Admins';
 # Enter the path/file for the output
 my $dumpfile = '/tmp/nagiosadmin.txt.new';
 
-# Enter the FQDN of your Active Directory domain controllers below
-my $dc1='dc1.example.com';
-my $dc2='dc2.example.com';
-
-# Base DN to search
-my $hqbase='dc=example,dc=com';
-
-# Authorized user for querying
-my $user='johndoe@example.com';
-my $passwd='password';
-
-# Number of seconds before timeout (for each query)
-my $timeout=60;
-
 ## END OF CONFIG SECTION ##
+
+# LDAP Options
+my %ldopts = (
+	timeout => int($timeout/2) || 1,
+);
 
 # Catch timeouts here
 $SIG{'ALRM'} = sub {
@@ -61,7 +54,7 @@ $SIG{'ALRM'} = sub {
 
 alarm($timeout);
 
-my $ldap = Net::LDAP->new($dc1) || Net::LDAP->new($dc2) || die "Error connecting to specified domain controllers $@ \n";
+my $ldap = Net::LDAP->new($dc1, %ldopts) || Net::LDAP->new($dc2, %ldopts) || die "Error connecting to specified domain controllers $@ \n";
 
 my $mesg = $ldap->bind(dn => $user,password =>$passwd);
 
@@ -79,6 +72,7 @@ my $page = Net::LDAP::Control::Paged->new(size => 100);
 my @queries = [ ( base    => $hqbase,
                   filter  => "(&(objectCategory=group)(cn=$alias))",
                   control => [ $page ],
+                  attrs   => ["cn", "distinguishedName", "objectClass", "sAMAccountName", "mail"],
 ) ];
 
 my %pagers;
@@ -101,6 +95,7 @@ foreach my $queryref (@queries) {
         push @queries, [ ( base    => $hqbase,
                            filter  => "(&(|(objectClass=group)(objectClass=user))(memberOf=" . $entry->get_value("distinguishedName") . "))",
                            control => [ $page ],
+                           attrs  => ["cn", "distinguishedName", "objectClass", "sAMAccountName", "mail"],
         ) ];
       } elsif ($class[1] eq 'person' && $class[3] eq 'user' ) {
         # This is a normal user

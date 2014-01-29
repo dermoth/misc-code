@@ -2,7 +2,7 @@
 #
 # updatepagers.pl  -  Creates Nagios Pager contacts out of LDAP group
 #
-# Version 1.01
+# Version 1.02
 #
 # Copyright (C) 2008 Thomas Guyot-Sionnest <tguyot@gmail.com>
 #

@@ -3,7 +3,7 @@
 # updatenagiosadmin.pl  -  Updates the cgi access list and creates contacts
 #                          for Nagios using LDAP queries.
 #
-# Version 1.01
+# Version 1.02
 #
 # Copyright (C) 2008 Thomas Guyot-Sionnest <tguyot@gmail.com>
 #
