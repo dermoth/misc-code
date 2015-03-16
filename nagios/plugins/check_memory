@@ -104,12 +104,25 @@ open(RESULT, "$FREECMD -b |")
   or $np->nagios_exit('CRITICAL', "Could not run $FREECMD");
 
 warn("Output from $FREECMD:\n") if ($verbose > 1);
-my ($used, $free);
+my ($used, $free, $available_col);
 while (<RESULT>) {
   warn("  $_") if ($verbose > 1);
-  next unless (m#^\-/\+\ buffers/cache:\s*(\d+)\s+(\d+)#);
-  $used = $1;
-  $free = $2;
+  if (m/available$/) {
+    $available_col = 1;
+    next;
+  }
+  if (defined($available_col)) {
+    if (m#(\d+)(?:\s+\d+){3}\s+(\d+)$#) {
+      ($used, $free) = ($1, $2);
+      last
+    }
+  }
+  else {
+    if (m#^\-/\+\ buffers/cache:\s*(\d+)\s+(\d+)#) {
+      ($used, $free) = ($1, $2);
+      last
+    }
+  }
 }
 
 close(RESULT);
