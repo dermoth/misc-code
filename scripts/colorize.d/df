@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# Description for --help
+DESC="Patterns for interpretting \`df' output (works better with 'df -P')"
+
+# Words to highlight - extended regex ("sed -r" compatible)
+# Except with the use of '^.+$' for BOLD, having overlapping colors is not
+# supported and the result will be unpredictable.
+BLACK=()
+RED=(' 9[0-9]%')
+GREEN=(' [0-7 ][0-9]%')
+YELLOW=(' 8[0-9]%')
+BLUE=()
+MAGENTA=()
+CYAN=()
+WHITE=()
+# Use '^.+$' here to get bright colors everywhere...
+BOLD=()
+
+# Underline is a special case, it can be done within and around colors. Be
+# aware however that the string may have embedded escape codes at this point.
+UNDERLINE=()
+
