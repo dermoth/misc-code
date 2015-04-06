@@ -4,8 +4,8 @@
 DESC="Miscellaneous patterns"
 
 # Words to highlight - extended regex ("sed -r" compatible)
-# Except with the use of '^.+$' for BOLD, having overlapping colors is not
-# supported and the result will be unpredictable.
+# Except with the use of '^.+$' for BOLD/UNDERLINE, having overlapping colors
+# is not supported and the result will be unpredictable.
 BLACK=()
 RED=('^.+\.tar\.gz$')
 GREEN=('^.+\.example\.com')
@@ -14,10 +14,12 @@ BLUE=()
 MAGENTA=()
 CYAN=()
 WHITE=()
+
+# Bold and Underline are special case, it can be done within and around colors. Be
+# aware however that the string may have embedded escape codes at this point.
+
 # Use '^.+$' here to get bright colors everywhere...
 BOLD=()
 
-# Underline is a special case, it can be done within and around colors. Be
-# aware however that the string may have embedded escape codes at this point.
 UNDERLINE=()
 

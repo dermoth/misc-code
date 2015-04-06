@@ -40,32 +40,39 @@ fi
 . "$configdir/$1"
 
 # Color codes
-fg_BLACK="$(tput setaf 0)"
-fg_RED="$(tput setaf 1)"
-fg_GREEN="$(tput setaf 2)"
-fg_YELLOW="$(tput setaf 3)"
-fg_BLUE="$(tput setaf 4)"
-fg_MAGENTA="$(tput setaf 5)"
-fg_CYAN="$(tput setaf 6)"
-fg_WHITE="$(tput setaf 7)"
-fg_BOLD="$(tput bold)"
-color_reset="$(tput sgr0)"
+fg_BLACK="$(echo -e '\e[30m')"
+fg_RED="$(echo -e '\e[31m')"
+fg_GREEN="$(echo -e '\e[32m')"
+fg_YELLOW="$(echo -e '\e[33m')"
+fg_BLUE="$(echo -e '\e[34m')"
+fg_MAGENTA="$(echo -e '\e[35m')"
+fg_CYAN="$(echo -e '\e[36m')"
+fg_WHITE="$(echo -e '\e[37m')"
+color_reset="$(echo -e '\e[39m')"
 
-# Underline is slightly different
-fg_UNDERLINE="$(tput smul)"
-underline_reset="$(tput rmul)"
+# Bold and Underline are slightly different
+fg_BOLD="$(echo -e '\e[1m')"
+bold_reset="$(echo -e '\e[0m')"
 
+fg_UNDERLINE="$(echo -e '\e[4m')"
+underline_reset="$(echo -e '\e[0m')"
+
+IFS=$'\n'
 while read line
 do
 	sedcmd=''
 	for c in GREEN BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE BOLD UNDERLINE
 	do
-		if [ $c == UNDERLINE ]
-		then
-			reset="$underline_reset"
-		else
-			reset="$color_reset"
-		fi
+		case $c in
+			BOLD)
+				reset="$bold_reset"
+				;;
+			UNDERLINE)
+				reset="$underline_reset"
+				;;
+			*)
+				reset="$color_reset"
+		esac
 
 		eval "words=(\"\${$c[@]}\")"
 		for w in "${words[@]}"
