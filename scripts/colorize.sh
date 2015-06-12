@@ -58,7 +58,7 @@ fg_UNDERLINE="$(echo -e '\e[4m')"
 underline_reset="$(echo -e '\e[0m')"
 
 IFS=$'\n'
-while read line
+while read -r line
 do
 	sedcmd=''
 	for c in GREEN BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE BOLD UNDERLINE
