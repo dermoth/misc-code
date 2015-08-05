@@ -57,29 +57,30 @@ bold_reset="$(echo -e '\e[0m')"
 fg_UNDERLINE="$(echo -e '\e[4m')"
 underline_reset="$(echo -e '\e[0m')"
 
+sedcmd=''
+for c in GREEN BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE BOLD UNDERLINE
+do
+	case $c in
+		BOLD)
+			reset="$bold_reset"
+			;;
+		UNDERLINE)
+			reset="$underline_reset"
+			;;
+		*)
+			reset="$color_reset"
+	esac
+
+	eval "words=(\"\${$c[@]}\")"
+	for w in "${words[@]}"
+	do
+		sedcmd="${sedcmd}s/($w)/$(eval "echo \$fg_$c")\1$reset/g;"
+	done
+done
+
 IFS=$'\n'
 while read -r line
 do
-	sedcmd=''
-	for c in GREEN BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE BOLD UNDERLINE
-	do
-		case $c in
-			BOLD)
-				reset="$bold_reset"
-				;;
-			UNDERLINE)
-				reset="$underline_reset"
-				;;
-			*)
-				reset="$color_reset"
-		esac
-
-		eval "words=(\"\${$c[@]}\")"
-		for w in "${words[@]}"
-		do
-			sedcmd="${sedcmd}s/($w)/$(eval "echo \$fg_$c")\1$reset/g;"
-		done
-	done
 	echo "$line"|sed -r "$sedcmd"
 done
 
