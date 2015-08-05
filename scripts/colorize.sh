@@ -78,9 +78,5 @@ do
 	done
 done
 
-IFS=$'\n'
-while read -r line
-do
-	echo "$line"|sed -r "$sedcmd"
-done
+exec sed -r "$sedcmd"
 
