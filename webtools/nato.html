@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+    <title>Nato Generator</title>
+    <script>
+function nato(c) {
+	var tbl = {
+		"0": "Zero",
+		"1": "One",
+		"2": "Two",
+		"3": "Three",
+		"4": "Four",
+		"5": "Five",
+		"6": "Six",
+		"7": "Seven",
+		"8": "Eight",
+		"9": "Niner",
+		"a": "Alpha",
+		"b": "Bravo",
+		"c": "Charlie",
+		"d": "Delta",
+		"e": "Echo",
+		"f": "Foxtrot",
+		"g": "Golf",
+		"h": "Hotel",
+		"i": "India",
+		"j": "Juliet",
+		"k": "Kilo",
+		"l": "Lima",
+		"m": "Mike",
+		"n": "November",
+		"o": "Oscar",
+		"p": "Papa",
+		"q": "Quebec",
+		"r": "Romeo",
+		"s": "Sierra",
+		"t": "Tango",
+		"u": "Uniform",
+		"v": "Victor",
+		"w": "Whiskey",
+		"x": "Xray",
+		"y": "Yankee",
+		"z": "Zulu",
+	};
+	return tbl[c.toLowerCase()];
+}
+
+function str2nato() {
+	var src = document.getElementById("src").value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+	var dst = "";
+	var i;
+
+	// Convert to array to handle multiplanar unicode (those won't be converted
+	// but they will be copied as-is correctly)
+	var clist = [...src];
+	for (i=0; i<clist.length; i++) {
+		/*  Turns out 3 space makes a visible separation of words... commented
+		if (clist[i] == " ")
+			continue;  // Skip spaces, we already add them */
+
+		/* Multiplanar falls into last statement, but if we need it in the future...
+		if (clist[i].length > 1)
+			dst += clist[i] + " "; // Multiplanar unicode.. (ex. emojis) */
+
+		if (clist[i] == "\n")
+			dst += "\n";  // No space after newline
+		else if ((c = nato(clist[i])) !== undefined)
+			dst += c + " ";
+		else
+			dst += clist[i] + " ";
+	}
+	document.getElementById("nato").value = dst;
+}
+    </script>
+  </head>
+  <body>
+    <div class="w-75 container-fluid">
+    <h3>NATO Phonetic Alphabet Speller</h3>
+    <p>Enter text to be converted:<br>
+    <textarea class="form-control" rows="10" id="src" autofocus onchange="str2nato()" onkeyup="str2nato()"></textarea>
+    <p><button type="button" class="btn btn-primary" onclick="var d=document.getElementById('src'); d.value = ''; str2nato(); d.focus();">Clear</button>
+    <p>NATO:<br>
+    <textarea class="form-control" rows=20 id="nato" readonly></textarea>
+  </body>
+</html>
+<!-- vim: set filetype=html.javascript -->
