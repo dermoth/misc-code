@@ -5,7 +5,7 @@ Miscellaneous pieces of code
 
 Web tools hyperlinks:
 
- - [NATO Phonetic Alphabet Speller](webtools/nato.html)
+ - [NATO Phonetic Alphabet Speller](https://dermoth.github.io/misc-code/webtools/nato.html)
 
 You will find the following top-level directories:
 
