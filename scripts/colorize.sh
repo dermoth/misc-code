@@ -58,7 +58,7 @@ fg_UNDERLINE="$(echo -e '\e[4m')"
 underline_reset="$(echo -e '\e[0m')"
 
 sedcmd=''
-for c in GREEN BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE BOLD UNDERLINE
+for c in BLACK RED GREEN YELLOW BLUE MAGENTA CYAN WHITE BOLD UNDERLINE
 do
 	case $c in
 		BOLD)
