@@ -31,8 +31,23 @@ function nato(c) {
 	return tbl[c.toLowerCase()];
 }
 
-function str2nato() {
-	var src = document.getElementById("src").value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+function str2nato(nmode="NFD") {
+	switch (nmode) {
+		case "NFC": break;
+		case "NFD": break;
+		//case "NFKC": Do not use, will mangle output with no benefit
+		case "NFKD": break;
+		default:
+			console.log("str2nato: nmode isn't one of NFC, NFD, NFKD. Defaulting to NFD");
+			nmode = "NFD";
+	}
+
+	/* Normalize to base letter + combining marks and remove marks; this effectively
+	   removes accents. Default is NFD, We could decompose even further using NFKD.
+	   The *C modes recompose characters and prevent base letters from being translated.
+	   For more info on normalisation forms see: https://unicode.org/reports/tr15/
+	*/
+	var src = document.getElementById("src").value.normalize(nmode).replace(/[\u0300-\u036f]/g, "");
 	var dst = "";
 	var i;
 
@@ -40,13 +55,14 @@ function str2nato() {
 	// but they will be copied as-is correctly)
 	var clist = [...src];
 	for (i=0; i<clist.length; i++) {
-		/*  Turns out 3 space makes a visible separation of words... commented
+		/* Counting the previous Nato word's a single space becomes 3; Turns out
+		   3 space makes a nice separation of word so don't skip spaces (commented)
 		if (clist[i] == " ")
 			continue;  // Skip spaces, we already add them */
 
 		/* Multiplanar falls into last statement, but if we need it in the future...
 		if (clist[i].length > 1)
-			dst += clist[i] + " "; // Multiplanar unicode.. (ex. emojis) */
+			dst += clist[i] + " ";  // Multiplanar unicode.. (ex. emojis) */
 
 		if (clist[i] == "\n")
 			dst += "\n";  // No space after newline
@@ -62,8 +78,13 @@ function str2nato() {
   <body>
     <div class="w-75 container-fluid">
     <h3>NATO Phonetic Alphabet Speller</h3>
+    <!-- TODO: add unicode combination mode selector:
+         NFC: Do not decompose (accents and special chars primted as-is
+         NFD: Reversible decompose (ligatures and special character form retained_
+         NFKD: Decompose all characters
+    -->
     <p>Enter text to be converted:<br>
-    <textarea class="form-control" rows="10" id="src" autofocus onchange="str2nato()" onkeyup="str2nato()"></textarea>
+    <textarea class="form-control" rows="10" id="src" autofocus onchange="str2nato(nmode='NFD')" onkeyup="str2nato()"></textarea>
     <p><button type="button" class="btn btn-primary" onclick="var d=document.getElementById('src'); d.value = ''; str2nato(); d.focus();">Clear</button>
     <p>NATO:<br>
     <textarea class="form-control" rows=20 id="nato" readonly></textarea>
