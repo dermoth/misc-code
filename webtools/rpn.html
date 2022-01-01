@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>RPN Calculator</title>
+    <!-- The page supports both light and dark color schemes, with light being default -->
+    <meta name="color-scheme" content="light dark">
+
+    <!-- Bootstrap CSS (as per normal) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Add the Bootstrap-Nightfall Variant CSS (the media attribute is for dark auto-switching) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-dark-5@1.1.3/dist/css/bootstrap-nightfall.min.css" rel="stylesheet" media="(prefers-color-scheme: dark)">
+
+    <!-- Bootstrap javascript-->
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js" integrity="sha384-IQsoLXl5PILFhosVNubq5LC7Qb9DXgDA9i+tQ8Zj3iwWAwPtgFTxbJ8NT4GN1R8p" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js" integrity="sha384-cVKIPhGWiC2Al4u+LWgxfKTRIcfu0JTxR+EQDz/bgldoEyl4H0zUF0QKbrJ0EcQF" crossorigin="anonymous"></script>
+
+    <!-- Optional Meta Theme Color is also supported on Safari and Chrome -->
+    <meta name="theme-color" content="#111111" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#eeeeee" media="(prefers-color-scheme: dark)">
+
+    <script type="text/javascript">
+/* Command stack and history */
+let fatalErr = false; // requires reset
+
+// If we needed to iterate oot process quickly rpn statements we'd be
+// better off with internal variables then update the dom at the end,
+// But this is meant mainly as an interactive tool so using dom as a
+// storage space...
+function getStack() {
+	return document.getElementById('stack-list');
+}
+
+function getHist() {
+	return document.getElementById('hist-list');
+}
+
+function getInput() {
+	return document.getElementById('rpn-input');
+}
+
+function getResult() {
+	return document.getElementById('rpn-result');
+}
+
+function newLi(value) {
+	let item = document.createElement('li');
+	item.className = 'list-group-item';
+	item.textContent = value;
+	return item;
+}
+
+function checkDepth(stack, level) {
+	// Check if stack is deep eough
+	if (level < 0)
+		throw 'Stack index cannot be negative';
+	if (level < stack.childElementCount)
+		return true;
+	return false;
+}
+
+function stackLen(stack=null) {
+	// Get stack length
+	if (!stack)
+		stack = getStack();
+	return stack.childElementCount;
+}
+
+function peek(level, stack=null) {
+	// Peek into stack at level
+	if (!stack)
+		stack = getStack();	
+	if (!checkDepth(stack, level))
+		throw 'Cannot peek at level ' + level;
+	return stack.children[level]
+}
+
+function push(value) {
+	// Push to stack
+	getStack().prepend(newLi(value));
+}
+
+function pop() {
+	// pop from stack
+	let stack = getStack()
+	if (!checkDepth(stack, 0))
+		throw 'Cannon pop: stack is empty';
+	let item = stack.children[0];
+	stack.removeChild(item);
+	return item.textContent;
+}
+
+function swap() {
+	// Swap topmost two elements of stack
+	let stack = getStack()
+	if (!checkDepth(stack, 1))
+		throw 'Cannot swap: stack has less than two items';
+
+	let top = stack.children[0].textContent;
+	stack.children[0].textContent = stack.children[1].textContent;
+	stack.children[1].textContent = top;
+	/* Or we could just pop and push twice...
+	let val1 = pop();
+	let val2 = pop();
+	push(val1);
+	push(val2); */
+}
+
+function hlog(value) {
+	let hist = getHist();
+	hist.prepend(newLi(value));
+}
+
+// Results functions
+function partialResult(value) {
+	getResult().value = value + ' (Stack has remaining entries)';
+}
+
+function finalResult(value) {
+	getResult().value = value;
+}
+
+function noResult() {
+	getResult().value = 'Stack is empty!';
+}
+
+function clearAll() {
+	// Clear stacks...
+	[getStack(), getHist()]
+	.forEach(elt => {
+		elt.innerHTML = '';
+	});
+	// Clear inputs
+	getInput().value = '';
+	getInput().focus();
+	getResult().value = '';
+	fatalErr = false;
+}
+
+function calc() {
+	let input = getInput();
+	input.focus();
+
+	// clear/reset before error check
+	if (['clear', 'cl', 'reset', 'rst'].includes(input.value))
+		clearAll();
+
+	if (fatalErr)
+		return;  // Anything else, ignore if error set
+
+	if (input.value == '')
+		return;  // Blank input, do nothing
+
+	// insert spaces around all operators
+	let values = input.value.replace(/([,;+*/^-]|pop|swap)/g, ' $& ').split(/ +/);
+	// Consider input as accepted from here on and clear the field for the next entry
+	input.value = '';
+
+	try {
+		values.forEach(item => {
+			switch(item) {
+				case '':
+				case ',':
+				case ';':
+					// Treat as separator (TODO: allow , as decimal separator?)
+					break;
+				case '+':
+				case '*':
+				case '-':
+				case '/':
+					let val1 = parseFloat(pop());
+					let val2 = parseFloat(pop());;
+					push(eval('val2' + item + 'val1'));
+					hlog('op: ' + item)
+					break;
+				case 'pop':
+					let value = pop();
+					hlog('pop: '+ value);
+					break;
+				case 'swap':
+					swap();
+					hlog('swap: ' + peek(1).textContent + '<=>' + peek(0).textContent);
+					break;
+				default:  // TODO: add copy, reset...paste?
+					if (isNaN(item)) {
+						throw 'Unknown operator: ' + item;
+					}
+					push(item);
+					hlog('push: ' + item);
+			}
+		});
+	} catch (err) {
+		fatalErr = true;
+		hlog('Fatal error: ' + err + '. Clear calculator to continue.');
+		input.value = 'clear'
+		push('ERR');
+		finalResult('ERR');
+		throw err;
+	}
+
+	// Write result
+	let finalLen = stackLen();
+	if (finalLen == 1)
+		finalResult(peek(0).textContent);
+	else if (finalLen > 0)
+		partialResult(peek(0).textContent);
+	else
+		noResult();
+}
+
+function inputCheck(param) {
+	// runc calc() if input box received a return key
+	if (param.keyCode == 13)  // Return key
+		calc();
+}
+    </script>
+  </head>
+  <body>
+  <div class="min-vh-100 min-vw-100 position-fixed">
+  <div class="vh-100 w-75 container-fluid">
+    <h2>RPN Calculator</h2>
+    <div class="h-75 row align-items-end">
+      <div class="mh-100 col overflow-auto">
+        <p>Please enter your input:</p>
+        <input class="form-control" type="text" id="rpn-input" onkeypress="inputCheck(event);"/>
+        <button type="button" class="btn btn-primary" onclick="calc();">Enter</button>
+        <button type="button" class="btn btn-primary" onclick="navigator.clipboard.writeText(peek(0));">Copy Result</button>
+        <button type="button" class="btn btn-primary" onclick="clearAll()">Clear</button>
+        <p>Result:</p>
+          <input class="form-control-lg" id="rpn-result" readonly/>
+      </div>
+      <div class="mh-100 col overflow-auto">
+        <p>Stack</p>
+        <ul class="list-group" id="stack-list">
+        </ul>
+      </div>
+      <div class="mh-100 col overflow-auto">
+        <p>History</p>
+        <ul class="list-group" id="hist-list">
+        </ul>
+      </div>
+    </div>
+    </div>
+    <!-- Examples needed? This needs better layout anyway
+    <div class="accordion accordion-flush" id="accordionExample">
+      <div class="accordion-item">
+        <p class="accordion-header" id="flush-headingOne">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseOne" aria-expanded="true" aria-controls="flush-collapseOne">
+            Examples...
+          </button>
+        </p>
+        <div id="flush-collapseOne" class="accordion-collapse collapse" aria-labelledby="flush-headingOne" data-bs-parent="#accordionExample">
+          <div class="accordion-body">
+            <ul class="list-group">
+              <li class="list-group-item">10 4 5 + *</li>
+              <li class="list-group-item">2. 10 4 5 + * 2 +</li>
+              <li class="list-group-item">10 8 *</li>
+            </ul>
+        </div>
+      </div>
+    </div-->
+    <script type="text/javascript">
+clearAll();  // Sets focus
+    </script>
+    </div>
+</body>
+</html>
+<!-- vim:set filetype=html.javascript: -->
