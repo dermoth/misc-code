@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>RPN Calculator (BETA!)</title>
+    <!-- The page supports both light and dark color schemes, with light being default -->
+    <meta name="color-scheme" content="light dark">
+
+    <!-- Bootstrap CSS (as per normal) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Add the Bootstrap-Nightfall Variant CSS (the media attribute is for dark auto-switching) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-dark-5@1.1.3/dist/css/bootstrap-nightfall.min.css" rel="stylesheet" media="(prefers-color-scheme: dark)">
+
+    <!-- Bootstrap javascript-->
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js" integrity="sha384-IQsoLXl5PILFhosVNubq5LC7Qb9DXgDA9i+tQ8Zj3iwWAwPtgFTxbJ8NT4GN1R8p" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js" integrity="sha384-cVKIPhGWiC2Al4u+LWgxfKTRIcfu0JTxR+EQDz/bgldoEyl4H0zUF0QKbrJ0EcQF" crossorigin="anonymous"></script>
+
+    <!-- Optional Meta Theme Color is also supported on Safari and Chrome -->
+    <meta name="theme-color" content="#111111" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#eeeeee" media="(prefers-color-scheme: dark)">
+
+    <script type="text/javascript">
+/* Command stack and history */
+let fatalErr = false;  // requires reset
+
+/* Command aliases (See: https://www.ucolick.org/~will/RUE/rpn/rpn.1.html) */
+let cmdAlias = {
+	// Binary math
+	'x':    '*',  // Multiplication
+	'pow':  '**',  // Power of y**x
+	'mod':  '%',  // Modulo
+	'fmod': '%',  // Modulo
+	// Basix unary
+	'invt': 'inv',  // 1/x
+	'int':  'aint', // Integral part
+	// Exp. and Log.
+	'log':  'ln',  // log(n)
+	//Conversions
+	'hrs':  'hours',  // Hours conversions
+	// Display, Units:
+	'decimal':     'dec',
+	'hexadecimal': 'hex',
+	// Other:
+	'vars': 'variables',
+	'V':    'variables',
+	'M':    'macros',
+}
+
+/* Expression translator: For each command provides:
+     1. The stack items required
+     2. The expression to evaluate
+   See: https://www.ucolick.org/~will/RUE/rpn/rpn.1.html
+*/
+let notImplemented = 'throw "Unimplemented: " + item';
+let cmdExpr = {
+	// Binary math
+	'+':  [2, 'val[1] +  val[0]'],
+	'-':  [2, 'val[1] -  val[0]'],
+	'*':  [2, 'val[1] *  val[0]'],
+	'/':  [2, 'val[1] /  val[0]'],
+	'%':  [2, 'val[1] %  val[0]'],  // FIXME: js may have a different mod behavior than traditional RPN
+	'**': [2, 'Math.pow(val[1], val[0])'],
+	// Binary bitwise
+	'|':  [2, 'val[1] | val[0]'],
+	'&':  [2, 'val[1] & val[0]'],
+	'^':  [2, 'val[1] ^ val[0]'],
+	'>>': [2, 'val[1] >> val[0]'],
+	'<<': [2, 'val[1] << val[0]'],
+	'~':  [2, 'val[1] ~ val[0]'],
+	// Basic Unary
+	'chs': [1, 'val[0] * -1'],  // Change sign
+	'abs': [1, 'Math.abs(val[0])'],
+	'inv': [1, '1 / val[0]'],
+	'frac': [1, notImplemented],  // Fractional part... split on "." ?
+	'aint': [1, notImplemented],  // Integral part... split on "." ?
+	'nint': [1, notImplemented],
+	'ceil': [1, 'Math.ceil(val[0])'],
+	'floor': [1, 'Math.floor(val[0])'],
+	'ceil': [1, 'Math.ceil(val[0])'],
+	'sqrt': [1, 'Math.sqrt(val[0])'],
+	'sqr': [1, 'val[0] * val[0]'],  // X squared
+	// Trigonometric
+	'sin':   [1, 'Math.sin(val[0])'],
+	'cos':   [1, 'Math.cos(val[0])'],
+	'tan':   [1, 'Math.tan(val[0])'],
+	'asin':  [1, 'Math.asin(val[0])'],
+	'acos':  [1, 'Math.acos(val[0])'],
+	'atan':  [1, 'Math.atan(val[0])'],
+	'atan2': [1, 'Math.atan2(val[0])'],
+	// Hyperbolic
+	'sinh':  [1, 'Math.sinh(val[0])'],
+	'cosh':  [1, 'Math.cosh(val[0])'],
+	'tanh':  [1, 'Math.tanh(val[0])'],
+	'asinh': [1, 'Math.asinh(val[0])'],
+	'acosh': [1, 'Math.acosh(val[0])'],
+	'atanh': [1, 'Math.atanh(val[0])'],
+	// Exp. and Log.
+	'exp':   [1, 'Math.exp(val[0])'],
+	'exp10': [1, '10 ** val[0]'],
+	'ln':    [1, 'Math.log(val[0])'],
+	'lg':    [1, 'Math.log2(val[0])'],
+	'log10': [1, 'Math.log10(val[0])'],
+	//Conversions (Unimplemented)
+	'degrad': [1, notImplemented],
+	'raddeg': [1, notImplemented],
+	'hms': [1, notImplemented],
+	'hours': [1, notImplemented],
+	// Stack ops: Direct implementation in calc()
+	// Constants:
+	'pi': [0, 'Math.PI'],
+	'e':  [0, 'Math.E'],
+	// Display, Units: (Uninplemented):
+	'rad':   [0, notImplemented],  // Trig functions use/return radians
+	'deg':   [0, notImplemented],  // Trig functions use/return degrees
+	'sci':   [1, notImplemented],  // Print in sci format with precision=X; pop stack
+	'fix':   [1, notImplemented],  // Print in fixed format with precision=X; pop stack
+	'dec':   [1, notImplemented],  // Input integral values, print decimal format  // FIXME: pop?
+	'octal': [1, notImplemented],  // Input integral values, print octal format
+	'hex':   [1, notImplemented],  // Input integral values, print hexadecimal format
+	// Other: (Uninplemented):
+	'p':      [0, notImplemented],  // Print the top element on the stack
+	/* I use = as an alias to pop, useful to start next calc on an empty stack
+	//'=':      [0, notImplemented],  // Print the entire stack */
+	'h':      [0, notImplemented], // Short help: list all operations
+	'help':   [0, notImplemented], // Alias for h
+	'H':      [0, notImplemented], // `Long' help (one line per operator)
+	'Help':   [0, notImplemented], // Alias for H
+	'macros':  [0, notImplemented], /// List all macros
+	'variables':  [0, notImplemented],// List all variables
+	'debug':  [1, notImplemented],  // Set debug level to X; pop stack
+}
+
+/* All commands */
+let allCmds = new Set(Object.keys(cmdExpr).concat(Object.keys(cmdAlias)));
+
+function cmdEval(command) {
+	let argCount, evalStr, val=[];
+
+	let realCmd = cmdAlias[command];
+	if (!realCmd)
+		realCmd = command;
+	console.log(realCmd);
+	[argCount, evalStr] = cmdExpr[realCmd];
+	for (let i=0; i<argCount; i++)
+		val[i] = parseFloat(pop());
+	push(eval(evalStr));
+	hlog('op: ' + realCmd);
+}
+
+// If we needed to iterate oot process quickly rpn statements we'd be
+// better off with internal variables then update the dom at the end,
+// But this is meant mainly as an interactive tool so using dom as a
+// storage space...
+function getStack() {
+	return document.getElementById('stack-list');
+}
+
+function getHist() {
+	return document.getElementById('hist-list');
+}
+
+function getInput() {
+	return document.getElementById('rpn-input');
+}
+
+function getResult() {
+	return document.getElementById('rpn-result');
+}
+
+function newLi(value) {
+	let item = document.createElement('li');
+	item.className = 'list-group-item';
+	item.textContent = value;
+	return item;
+}
+
+function checkDepth(stack, level) {
+	// Check if stack is deep eough
+	if (level < 0)
+		throw 'Stack index cannot be negative';
+	if (level < stack.childElementCount)
+		return true;
+	return false;
+}
+
+function stackLen(stack=null) {
+	// Get stack length
+	if (!stack)
+		stack = getStack();
+	return stack.childElementCount;
+}
+
+function peek(level, stack=null) {
+	// Peek into stack at level
+	if (!stack)
+		stack = getStack();
+	if (!checkDepth(stack, level))
+		throw 'Cannot peek at level ' + level;
+	return stack.children[level]
+}
+
+function push(value, stack=null) {
+	// Push to stack
+	if (!stack)
+		stack = getStack();
+	stack.prepend(newLi(value));
+}
+
+function pop(stack=null) {
+	// pop from stack
+	if (!stack)
+		stack = getStack();
+	if (!checkDepth(stack, 0))
+		throw 'Cannon pop: stack is empty';
+
+	let item = stack.children[0];
+	stack.removeChild(item);
+	return item.textContent;
+}
+
+function swap() {
+	// Swap topmost two elements of stack
+	let stack = getStack()
+	if (!checkDepth(stack, 1))
+		throw 'Cannot swap: stack has less than two items';
+
+	let top = stack.children[0].textContent;
+	stack.children[0].textContent = stack.children[1].textContent;
+	stack.children[1].textContent = top;
+	/* Or we could just pop and push twice...
+	let val1 = pop();
+	let val2 = pop();
+	push(val1);
+	push(val2); */
+}
+
+function dup(level=0) {
+	let stack = getStack()
+	if (!checkDepth(stack, 0))
+		throw 'Cannot dup: stack is empty';
+
+	let dupVal = peek(level, stack).textContent;
+	push(dupVal);
+	return dupVal;
+}
+
+function roll() {
+	let stack = getStack()
+	if (!checkDepth(stack, 0))
+		throw 'Cannot roll: stack is empty';
+
+	let top = stack.children[0];
+	stack.removeChild(top);
+	stack.append(top);
+	return top.textContent;
+}
+
+function hlog(value) {
+	let hist = getHist();
+	hist.append(newLi(value));
+}
+
+// Results functions
+function partialResult(value) {
+	getResult().value = value + ' (Stack has remaining entries)';
+}
+
+function finalResult(value) {
+	getResult().value = value;
+}
+
+function noResult() {
+	getResult().value = 'Stack is empty!';
+}
+
+function clearAll() {
+	// Clear stacks...
+	[getStack(), getHist()]
+	.forEach(elt => {
+		elt.innerHTML = '';
+	});
+	// Clear inputs
+	getInput().value = '';
+	getInput().focus();
+	getResult().value = '';
+	fatalErr = false;
+}
+
+function calc() {
+	let input = getInput();
+	input.focus();
+
+	// clear/reset before error check
+	if (['clear', 'cl', 'reset', 'rst'].includes(input.value))
+		clearAll();
+
+	if (fatalErr)
+		return;  // Anything else, ignore if error set
+
+	if (input.value == '')
+		return;  // Blank input, do nothing
+
+	// insert spaces around all operators (FIXME)
+	/* This was easy with just 4 ops, how do we deal with * vs. **? */
+	//let values = input.value.replace(/([,;+*/^-]|pop|swap)/g, ' $& ').split(/ +/);
+	// To match all operators (non-alpha 1-2 chars):
+	//let allOps = Array.from(allCmds).filter(elt => elt.search(/^[^A-Za-z]{1,2}$/) === 0)
+
+	// Split on space, comma and semicolon
+	let values = input.value.split(/[ ,;]+/);
+	// Consider input as accepted from here on and clear the field for the next entry
+	input.value = '';
+
+	try {
+		values.forEach(item => {
+			/* If we have it, eval and execute directly */
+			if (allCmds.has(item)) {
+				cmdEval(item);  // Also handles logging
+				return;
+			}
+
+			/* Other ops */
+			switch(item) {
+				case '':  // Multiple spaces (usually from replace() above), ignore
+				case ',':
+				case ';':
+					// Treat as separator (ignore; TODO: allow , as decimal separator?)
+					break;
+				case 'sum':
+					// TODO: pop first them sum n elt
+					let count = pop();
+					let sum = 0;
+					for (let i=0; i<count; i++)
+						sum += parseFloat(pop());
+					push(sum);
+					hlog('sum: ' + count);
+					break;
+				case 'exch':
+				case 'xfy':  // Alias
+				case 'swap':  // Alias
+					swap();
+					hlog('exch: ' + peek(1).textContent + '<=>' + peek(0).textContent);
+					break;
+				case 'pop':
+				case '=':  // Alias
+					hlog('pop: ' + pop());
+					break;
+				case 'dup':
+					hlog('dup: ' + dup());
+					break;
+				// Added by me, not in rpn manpage
+				case 'r':  // Rolls stack by one elt
+					//TODO - Move top elt to bottom
+					hlog('r: ' + roll() + ' => bottom of the stack')
+					break;
+				case 'stacklen':  // Push stack length to stack
+				case 'sl': // Alias
+					let sLen = stackLen();
+					push(sLen);
+					hlog('stacklen: ' + sLen);
+					break;
+				default:  // TODO: add copy, reset...paste?
+					if (isNaN(item)) {
+						throw 'Unknown operator: ' + item;
+					}
+					push(item);
+					hlog('push: ' + item);
+			}
+		});
+	} catch (err) {
+		fatalErr = true;
+		hlog('Fatal error: ' + err + '.');
+		hlog('Clear calculator to continue.');
+		input.value = 'clear'
+		push('ERR');
+		finalResult('ERR');
+		throw err;
+	}
+
+	// Write result
+	let finalLen = stackLen();
+	if (finalLen == 1)
+		finalResult(peek(0).textContent);
+	else if (finalLen > 0)
+		partialResult(peek(0).textContent);
+	//else if (/*TODO last command is =*/)
+	//	finalResult(/*TODO last popped value*/
+	else
+		noResult();
+}
+
+function inputCheck(param) {
+	// runc calc() if input box received a return key
+	if (param.keyCode == 13)  // Return key
+		calc();
+}
+    </script>
+  </head>
+  <body>
+  <div class="min-vh-100 min-vw-100 position-fixed">
+  <div class="vh-100 w-75 container-fluid">
+    <h2 class="text-center mt-5">RPN Calculator</h2>
+    <div class="h-75 row align-items-end">
+      <div class="mh-100 col overflow-auto">
+        <h6>Please enter your input:</h6>
+        <p><input class="form-control" type="text" id="rpn-input" onkeypress="inputCheck(event);"/></p>
+        <p>
+          <button type="button" class="btn btn-primary" onclick="calc();">Enter</button>
+          <button type="button" class="btn btn-primary" onclick="navigator.clipboard.writeText(peek(0).textContent);">Copy Result</button>
+          <button type="button" class="btn btn-primary" onclick="clearAll()">Clear</button>
+        </p>
+        <h6>Result:</h6>
+          <input class="form-control-lg" id="rpn-result" readonly/>
+        <p/>
+        <h3>Instructions:</h3>
+        <p>
+          This is a <a href="https://www.google.com/search?q=Reverse+Polish+Notation&oq=Reverse+Polish+Notation&hl=en" target="Blank">Reverse Polish Notation</a>
+          calculator.<!-- You can aggregate multiple commands in a single input. Only numbers needs to be separated.-->
+        </p>
+        <h4>Supported syntax:</h4>
+    <p>Most of the operators documented in this <a href="https://www.ucolick.org/~will/RUE/rpn/rpn.1.html">RPN CLI tool</a> are avaible.
+    Variables haven't yet been implemented (should be easy, WIP), and macros will require slight refactoring to implement.
+    The <code>=</code> operator is actually an alias to pop (the stack is fully visible anyway). TODO: also put the value in the result box)</p>
+        <dl class="row">
+          <dt class="col-sm-3">Separators</dt>
+          <dt class="col-sm-9"><code>{ &lt;space&gt; | ; | , }</code>
+          <br>NB: <code>,</code> may be allowed as a decimal separator in the future, please avoid it!</dt>
+          <dt class="col-sm-3">Equal sign</dt>
+          <dt class="col-sm-9">The equal sign (<code>=</code>) is aliased to pop, useful to empty last stack value and start over.</dt>
+        </dl>
+      </div>
+      <div class="mh-100 col d-flex flex-column">
+        <div class="row align-items-end">
+          <div class="col"><p>Stack <b>&#129045;</b></p></div>
+        </div>
+        <div class="row align-items-end overflow-auto">
+          <div class="mh-100 col">
+            <ul class="list-group" id="stack-list">
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mh-100 col d-flex flex-column">
+        <div class="row align-items-end">
+          <div class="col"><p>History <b>&#129047;</b></p></div>
+        </div>
+        <div class="row align-items-end d-flex flex-column-reverse overflow-auto">
+          <div class="mh-100 col">
+            <ul class="list-group" id="hist-list">
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="text/javascript">
+clearAll();  // Sets focus
+    </script>
+    </div>
+</body>
+</html>
+<!-- vim:set filetype=html.javascript: -->
