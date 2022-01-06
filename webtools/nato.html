@@ -18,28 +18,28 @@
     <script>
 function nato(c) {
 	var tbl = {
-		"a": "Alpha",   "b": "Bravo",    "c": "Charlie", "d": "Delta",
-		"e": "Echo",    "f": "Foxtrot",  "g": "Golf",    "h": "Hotel",
-		"i": "India",   "j": "Juliet",   "k": "Kilo",    "l": "Lima",
-		"m": "Mike",    "n": "November", "o": "Oscar",   "p": "Papa",
-		"q": "Quebec",  "r": "Romeo",    "s": "Sierra",  "t": "Tango",
-		"u": "Uniform", "v": "Victor",   "w": "Whiskey", "x": "Xray",
-		"y": "Yankee",  "z": "Zulu",     "0": "Zero",    "1": "One",
-		"2": "Two",     "3": "Three",    "4": "Four",    "5": "Five",
-		"6": "Six",     "7": "Seven",    "8": "Eight",   "9": "Niner",
+		'a': 'Alpha',   'b': 'Bravo',    'c': 'Charlie', 'd': 'Delta',
+		'e': 'Echo',    'f': 'Foxtrot',  'g': 'Golf',    'h': 'Hotel',
+		'i': 'India',   'j': 'Juliet',   'k': 'Kilo',    'l': 'Lima',
+		'm': 'Mike',    'n': 'November', 'o': 'Oscar',   'p': 'Papa',
+		'q': 'Quebec',  'r': 'Romeo',    's': 'Sierra',  't': 'Tango',
+		'u': 'Uniform', 'v': 'Victor',   'w': 'Whiskey', 'x': 'Xray',
+		'y': 'Yankee',  'z': 'Zulu',     '0': 'Zero',    '1': 'One',
+		'2': 'Two',     '3': 'Three',    '4': 'Four',    '5': 'Five',
+		'6': 'Six',     '7': 'Seven',    '8': 'Eight',   '9': 'Niner',
 	};
 	return tbl[c.toLowerCase()];
 }
 
-function str2nato(nmode="NFD") {
+function str2nato(nmode='NFD') {
 	switch (nmode) {
-		case "NFC": break;
-		case "NFD": break;
-		//case "NFKC": Do not use, will mangle output with no benefit
-		case "NFKD": break;
+		case 'NFC': break;
+		case 'NFD': break;
+		//case 'NFKC': Do not use, will mangle output with no benefit
+		case 'NFKD': break;
 		default:
-			console.log("str2nato: nmode isn't one of NFC, NFD, NFKD. Defaulting to NFD");
-			nmode = "NFD";
+			console.log('str2nato: nmode isn\'t one of NFC, NFD, NFKD. Defaulting to NFD');
+			nmode = 'NFD';
 	}
 
 	/* Normalize to base letter + combining marks and remove marks; this effectively
@@ -47,8 +47,8 @@ function str2nato(nmode="NFD") {
 	   The *C modes recompose characters and prevent base letters from being translated.
 	   For more info on normalisation forms see: https://unicode.org/reports/tr15/
 	*/
-	var src = document.getElementById("src").value.normalize(nmode).replace(/[\u0300-\u036f]/g, "");
-	var dst = "";
+	var src = document.getElementById('src').value.normalize(nmode).replace(/[\u0300-\u036f]/g, '');
+	var dst = '';
 	var i;
 
 	// Convert to array to handle multiplanar unicode (those won't be converted
@@ -57,21 +57,21 @@ function str2nato(nmode="NFD") {
 	for (i=0; i<clist.length; i++) {
 		/* Counting the previous Nato word's a single space becomes 3; Turns out
 		   3 space makes a nice separation of word so don't skip spaces (commented)
-		if (clist[i] == " ")
+		if (clist[i] == ' ')
 			continue;  // Skip spaces, we already add them */
 
 		/* Multiplanar falls into last statement, but if we need it in the future...
 		if (clist[i].length > 1)
-			dst += clist[i] + " ";  // Multiplanar unicode.. (ex. emojis) */
+			dst += clist[i] + ' ';  // Multiplanar unicode.. (ex. emojis) */
 
-		if (clist[i] == "\n")
-			dst += "\n";  // No space after newline
+		if (clist[i] == '\n')
+			dst += '\n';  // No space after newline
 		else if ((c = nato(clist[i])) !== undefined)
-			dst += c + " ";
+			dst += c + ' ';
 		else
-			dst += clist[i] + " ";
+			dst += clist[i] + ' ';
 	}
-	document.getElementById("nato").value = dst;
+	document.getElementById('nato').value = dst;
 }
     </script>
   </head>
@@ -90,4 +90,4 @@ function str2nato(nmode="NFD") {
     <textarea class="form-control" rows=20 id="nato" readonly></textarea>
   </body>
 </html>
-<!-- vim: set filetype=html.javascript -->
+<!-- vim:set filetype=html.javascript: -->
