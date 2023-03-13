@@ -5,6 +5,7 @@ Miscellaneous pieces of code
 
 Web tools hyperlinks:
 
+- [Landing page](https://dermoth.github.io/misc-code/)
 - [NATO Phonetic Alphabet Speller](https://dermoth.github.io/misc-code/webtools/nato.html)
 - [RPN Calculator](https://dermoth.github.io/misc-code/webtools/rpn.html) (BETA!)
 
