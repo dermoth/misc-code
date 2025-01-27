@@ -1,0 +1,78 @@
+#!/bin/bash
+#
+# utf8encode - Given one or more unicode strings, return the underscore-
+#              encoded UTF-8 version (one per line).
+#
+
+# Check a nibble starts with 0b1000 0000
+checknib() {
+	local val=16#$1
+
+	((val >> 6 == 1 << 1))
+}
+
+utf8decode() {
+	local var=$1 res='' char chr i tmp
+
+	for ((i=0; i<${#var}; i++)); do
+		char=${var:$i:1}
+		if [ "$char" = _ ]; then
+			((++i))
+			tmp=${var:$i:2}
+			char="\\x$tmp"
+			chr=16#$tmp
+			((++i))
+			if ((chr & 1 << 7)); then
+				if ((chr & 1 << 6)); then
+					((++i))
+					tmp=${var:$i:2}
+					char+="\\x$tmp"
+					if ! checknib "$tmp"; then
+						echo >&2 "Invalid encoding"
+						return 1
+					fi
+					((++i))
+					if ((chr & 1 << 5)); then
+						((++i))
+						tmp=${var:$i:2}
+						char+="\\x$tmp"
+						if ! checknib "$tmp"; then
+							echo >&2 "Invalid encoding"
+							return 1
+						fi
+						((++i))
+						if ((chr & 1 << 4)); then
+							((++i))
+							tmp=${var:$i:2}
+							char+="\\x$tmp"
+							if ! checknib "$tmp"; then
+								echo >&2 "Invalid encoding"
+								return 1
+							fi
+							((++i))
+							if ((chr & 1 << 3)); then
+								# Prefix cannot have more that 4 1's (0b1111 1000)
+								echo >&2 "Invalid encoding"
+								return 1
+							fi
+						fi
+					fi
+				else
+					# Prefix cannot start with 0b1000 0000
+					echo >&2 "Invalid encoding"
+					return 1
+				fi
+			fi
+			char=${char@E}
+		fi
+		res+=$char
+	done
+	printf '%s\n' "$res"
+}
+
+# test
+# set -- foo_e281bd_e284a2_e281bebar_f09f908d
+
+for arg in "$@"; do
+	utf8decode "$arg"
+done
