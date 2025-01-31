@@ -10,3 +10,6 @@ with the logic implemented in the browser.
 
 The source repo is on GitHub: <https://github.com/dermoth/misc-code>
 
+## Nauthty Bots
+
+Don't [go here](http://www.guyot-sionnest.net/). Just don't.
