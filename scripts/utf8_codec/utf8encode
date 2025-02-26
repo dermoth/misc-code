@@ -10,22 +10,17 @@ CP3_MAX=$((16#00FFFF))
 CP4_MAX=$((16#10FFFF))
 
 getnibs() {
-	local var=$1 pfxlen=$2 value=$3 prefix=0 pshift mask i
+	local var=$1 pfxlen=$2 value=$3 prefix='2#' pshift mask i
 
-	if ((pfxlen)); then
-		prefix='2#'
-		for ((i=0; i<pfxlen; i++)); do
-			prefix+='1'
-		done
-		prefix+='0'
-		# shift above prefix by complement
-		pshift=$((8 - pfxlen - 1))
-		((prefix <<= pshift))
-		# Value mask - remaining bits
-		mask=$((2 ** pshift -1))
-	else
-		mask=$((2 ** 7 - 1)) # 7-bit ascii
-	fi
+	for ((i=0; i<pfxlen; i++)); do
+		prefix+='1'
+	done
+	prefix+='0'
+	# shift above prefix by complement
+	pshift=$((8 - pfxlen - 1))
+	((prefix <<= pshift))
+	# Value mask - remaining bits
+	mask=$((2 ** pshift -1))
 
 	printf -v "$var" '%02x' $((prefix | (value & mask)))
 }
@@ -43,7 +38,7 @@ utf8encode() {
 			res+="${var:$i:1}"
 		else
 			enc='_'
-			plen=0
+			plen=1
 			bits=0
 			if ((chr > CP4_MAX)); then
 				echo >&2 "Invalid encoding" # possible?
