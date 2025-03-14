@@ -1,0 +1,76 @@
+#! perl
+
+# Copyright (C) 2025 Thomas Guyot-Sionnest <tguyot@gmail.com>
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+#:META:RESOURCE:utempter-bin:string:path to utempter helper binary
+
+=head1 NAME
+
+utempter - Update utmp / wtmp login records using libutempter
+
+=head1 DESCRIPTION
+
+Uses the utempter helper script from libutempter to update utmp / wtmp
+login records. It adds and removes entries for each terminal if using a
+tab manager. The default utempter path, /usr/libexec/utempter/utempter,
+can be overridden in the C<URxvt.utempter-bin> resource.
+
+This plugin can be useful if you cannot get the urxvt binary setgid, but
+have a working libutempter installation.
+
+=cut
+
+use POSIX ();
+
+sub utempter_helper {
+   my $self = shift;
+
+   my $utempter = $self->x_resource ('utempter-bin') // '/usr/libexec/utempter/utempter';
+   my $fileno = $self->pty_fd;
+
+   if (!(defined $fileno)) {
+      warn "utempter: urxvt::term->pty_fd is not set, is it compiled with --enable-frills?";
+      return;
+   }
+
+   # Use fork/exec, other methods mess up badly with urxvt
+   my $pid = fork;
+   if (!(defined $pid)) {
+      warn "utempter: fork failed ($!)";
+   } elsif ($pid == 0) {
+      open STDIN, "<&$fileno";
+      exec $utempter, @_ or warn "$utempter: exec failed ($!)";
+      # On exec failure skip destructors as with exec!
+      POSIX::_exit(1);
+   }
+} 
+
+sub on_start {
+   my ($self) = @_;
+
+   $self->utempter_helper ('add', $ENV{'DISPLAY'});
+
+   ()
+}
+
+sub on_destroy {
+   my ($self) = @_;
+
+   $self->utempter_helper ('del');
+
+   ()
+}
