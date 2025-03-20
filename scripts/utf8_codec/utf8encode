@@ -4,27 +4,41 @@
 #              return the underscore-encoded version (one per line).
 #
 
-CP1_MAX=$((16#00007F))
-CP2_MAX=$((16#0007FF))
-CP3_MAX=$((16#00FFFF))
-CP4_MAX=$((16#10FFFF))
+declare -i __UTF8ENCODE_CP1_MAX=16#00007F
+declare -i __UTF8ENCODE_CP2_MAX=16#0007FF
+declare -i __UTF8ENCODE_CP3_MAX=16#00FFFF
+declare -i __UTF8ENCODE_CP4_MAX=16#10FFFF
 
-getnibs() {
+# Print 2 hex nibs for character with offset pfxlen
+# Params:
+#   var:    target variable to write nibs into
+#   pfxlen: This is the number of leading 1's in the byte
+#   value:  Value to encode, must be bit-shifted for multi-byte utf8
+#           (6 bits per byte except for the first byte, extra bits
+#           will be masked)
+__utf8encode_getnibs() {
 	local var=$1 pfxlen=$2 value=$3 prefix='2#' pshift mask i
 
+	# Generate the utf8 prefix
 	for ((i=0; i<pfxlen; i++)); do
 		prefix+='1'
 	done
-	prefix+='0'
-	# shift above prefix by complement
-	pshift=$((8 - pfxlen - 1))
-	((prefix <<= pshift))
-	# Value mask - remaining bits
-	mask=$((2 ** pshift -1))
+	# Trailing 0 (leading when pxflen is 0)
+	prefix+='0 << pshift'  # pshift defined below
 
+	# Complement for bit shift: pfxlen + 1
+	pshift=$((8 - pfxlen - 1))
+
+	# Value mask - remaining bits
+	mask=$((2 ** pshift - 1))
+
+	# Combine prefix & value
 	printf -v "$var" '%02x' $((prefix | (value & mask)))
 }
 
+# Encode string to escaped utf8, write decoded value to $ret.
+# Params:
+#   var: String to encode
 utf8encode() {
 	local var=$1 res='' enc chr i plen bits tmp
 
@@ -38,26 +52,28 @@ utf8encode() {
 			res+="${var:$i:1}"
 		else
 			enc='_'
-			plen=0
-			bits=0
-			if ((chr > CP4_MAX)); then
+			plen=0  # No prefix for 7-bit, else 2..4
+			bits=0  # Not counting the first nibble (so 0 for 7-bit)
+			if ((chr > __UTF8ENCODE_CP4_MAX)); then
 				echo >&2 "Invalid encoding" # possible?
 				break
-			elif ((chr > CP3_MAX)); then
+			elif ((chr > __UTF8ENCODE_CP3_MAX)); then
 				plen=4
 				bits=18  # not counting the first nibble
-			elif ((chr > CP2_MAX)); then
+			elif ((chr > __UTF8ENCODE_CP2_MAX)); then
 				plen=3
 				bits=12
-			elif ((chr > CP1_MAX)); then
+			elif ((chr > __UTF8ENCODE_CP1_MAX)); then
 				plen=2
 				bits=6
-			fi  # else 7-bit ascii, plen=bits=0
+			fi  # else 7-bit ascii
 
-			getnibs tmp $plen $((chr >> bits))
+			__utf8encode_getnibs tmp $plen $((chr >> bits))
 			enc+=${tmp:?"Assigned by ref, make shellcheck happy"}
+
+			# Multi-byte only: loop on remaining bits
 			for ((bits-=6; bits>=0; bits-=6)); do
-				getnibs tmp 1 $((chr >> bits))
+				__utf8encode_getnibs tmp 1 $((chr >> bits))
 				enc+=$tmp
 			done
 			res+=$enc
@@ -67,7 +83,7 @@ utf8encode() {
 }
 
 # test
-# set -- foo⁽™⁾bar🐍
+# set -- _foo⁽™⁾bar🐍
 
 for arg in "$@"; do
 	utf8encode "$arg"

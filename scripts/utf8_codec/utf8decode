@@ -1,16 +1,27 @@
 #!/bin/bash
 #
-# utf8encode - Given one or more unicode strings, return the underscore-
-#              encoded UTF-8 version (one per line).
+# utf8decode - Given one or more underscore-encoded utf8 strings, return
+#              the decoded UTF-8 version (one per line).
 #
 
-# Check a nibble starts with 0b1000 0000
-checknib() {
-	local val=16#$1
+# Check a nibble starts with 0b >>10<< 00 0000
+# Params:
+#   val: hex value to check
+__utf8decode_checknib() {
+	local -i val=16#$1
 
-	((val >> 6 == 1 << 1))
+	# if/else seems to be a tad faster than default fail
+	if ((val >> 6 == 1 << 1)); then
+		return 0
+	else
+		echo >&2 "Invalid encoding: 0x$1"
+		return 1
+	fi
 }
 
+# Decode utf8-encoded string, write decoded value to $ret.
+# Params:
+#   var: Value to decode
 utf8decode() {
 	local var=$1 res='' char chr i tmp
 
@@ -27,7 +38,7 @@ utf8decode() {
 					((++i))
 					tmp=${var:$i:2}
 					char+="\\x$tmp"
-					if ! checknib "$tmp"; then
+					if ! __utf8decode_checknib "$tmp"; then
 						echo >&2 "Invalid encoding"
 						return 1
 					fi
@@ -36,7 +47,7 @@ utf8decode() {
 						((++i))
 						tmp=${var:$i:2}
 						char+="\\x$tmp"
-						if ! checknib "$tmp"; then
+						if ! __utf8decode_checknib "$tmp"; then
 							echo >&2 "Invalid encoding"
 							return 1
 						fi
@@ -45,7 +56,7 @@ utf8decode() {
 							((++i))
 							tmp=${var:$i:2}
 							char+="\\x$tmp"
-							if ! checknib "$tmp"; then
+							if ! __utf8decode_checknib "$tmp"; then
 								echo >&2 "Invalid encoding"
 								return 1
 							fi
@@ -64,6 +75,12 @@ utf8decode() {
 				fi
 			fi
 			char=${char@E}
+			# This is a lazy way of failing on the High Surrogates (U+D800 - DB7F),
+			# High Private Use Surrogates (U+DB80 - U+DBFF) and Low Surrogates
+			# (U+DC00 - U+DFFF). Even using the $'\Uxxxx' syntax bash seems to
+			# encode it to hex and interpret it as whatever encoding that fits, like
+			# iso-8859-1!!. Then we get >1 character...
+			[ ${#char} -gt 1 ] && echo >&2 "Invalid encoding: $char" && return 1
 		fi
 		res+=$char
 	done
@@ -71,7 +88,7 @@ utf8decode() {
 }
 
 # test
-# set -- foo_e281bd_e284a2_e281bebar_f09f908d
+# set -- _5ffoo_e281bd_e284a2_e281bebar_f09f908d
 
 for arg in "$@"; do
 	utf8decode "$arg"
