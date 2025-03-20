@@ -38,7 +38,7 @@ utf8encode() {
 			res+="${var:$i:1}"
 		else
 			enc='_'
-			plen=1
+			plen=0
 			bits=0
 			if ((chr > CP4_MAX)); then
 				echo >&2 "Invalid encoding" # possible?
