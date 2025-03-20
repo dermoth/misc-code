@@ -26,7 +26,7 @@ getnibs() {
 }
 
 utf8encode() {
-	local var=$1 res='' enc chr plen bits tmp
+	local var=$1 res='' enc chr i plen bits tmp
 
 	for ((i=0; i<${#var}; i++)); do
 		printf -v chr '%i' "'${var:$i:1}"
@@ -63,7 +63,7 @@ utf8encode() {
 			res+=$enc
 		fi
 	done
-	printf '%s\n' "$res"
+	printf -v ret '%s' "$res"
 }
 
 # test
@@ -71,4 +71,5 @@ utf8encode() {
 
 for arg in "$@"; do
 	utf8encode "$arg"
+	printf '%s\n' "$ret"
 done

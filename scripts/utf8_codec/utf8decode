@@ -67,7 +67,7 @@ utf8decode() {
 		fi
 		res+=$char
 	done
-	printf '%s\n' "$res"
+	printf -v ret '%s' "$res"
 }
 
 # test
@@ -75,4 +75,5 @@ utf8decode() {
 
 for arg in "$@"; do
 	utf8decode "$arg"
+	printf '%s\n' "$ret"
 done
