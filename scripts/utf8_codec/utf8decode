@@ -22,7 +22,6 @@ __utf8decode_isnib() {
 # Params:
 #   val: hex value to check
 __utf8decode_checknib() {
-	__utf8decode_isnib "$1" || return
 	local -i val=16#$1
 
 	# if/else seems to be a tad faster than default fail
@@ -39,7 +38,7 @@ __utf8decode_checknib() {
 #   var: Value to decode
 utf8decode() {
 	local var=$1 res='' char tmp
-	local -i chr i
+	local -i chr i j
 
 	for ((i=0; i<${#var};)); do
 		char=${var:i++:1}
@@ -49,41 +48,33 @@ utf8decode() {
 			__utf8decode_isnib "$tmp" || return 1
 			char="\\x$tmp"
 			chr=16#$tmp
-			if ((chr & 1 << 7)); then
-				if ((chr & 1 << 6)); then
+
+			if ((chr >= 192)); then
+				# Multi-byte header (0b11xxxxxx)
+
+				for ((j=7; j>3; j--)); do
+					# Read one additional byte for each 1 in prefix
+					((chr >> j & 1)) || break
+					((j == 7)) && continue  # We have the first byte already
+
+					# Read next byte
 					tmp=${var:i+=2,i-2:2}
-					if ! __utf8decode_checknib "$tmp"; then
-						echo >&2 "Invalid encoding: 0x$tmp"
-						return 1
-					fi
+					__utf8decode_isnib "$tmp" || return 1
+					__utf8decode_checknib "$tmp" || return 1
 					char+="\\x$tmp"
-					if ((chr & 1 << 5)); then
-						tmp=${var:i+=2,i-2:2}
-						if ! __utf8decode_checknib "$tmp"; then
-							echo >&2 "Invalid encoding: 0x$tmp"
-							return 1
-						fi
-						char+="\\x$tmp"
-						if ((chr & 1 << 4)); then
-							tmp=${var:i+=2,i-2:2}
-							if ! __utf8decode_checknib "$tmp"; then
-								echo >&2 "Invalid encoding: 0x$tmp"
-								return 1
-							fi
-							char+="\\x$tmp"
-							if ((chr & 1 << 3)); then
-								# Prefix cannot have more that 4 1's (0b1111 1000)
-								echo >&2 "Invalid encoding: 0x$tmp"
-								return 1
-							fi
-						fi
-					fi
-				else
-					# Prefix cannot start with 0b1000 0000
+				done
+
+				# Prefix cannot have more that 4 1's (0b1111 1000)
+				if ((chr >> j & 1)); then
 					echo >&2 "Invalid encoding: 0x$tmp"
 					return 1
 				fi
+			elif ((chr > 127)); then
+				# 128-191 aren't valid for the first byte (0b10xxxxxx)
+				echo >&2 "Invalid encoding: 0x$tmp"
+				return 1
 			fi
+
 			char=${char@E}
 			# This is a lazy way of failing on the High Surrogates (U+D800 - DB7F),
 			# High Private Use Surrogates (U+DB80 - U+DBFF) and Low Surrogates
