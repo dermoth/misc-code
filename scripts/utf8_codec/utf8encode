@@ -17,7 +17,8 @@ declare -i __UTF8ENCODE_CP4_MAX=16#10FFFF
 #           (6 bits per byte except for the first byte, extra bits
 #           will be masked)
 __utf8encode_getnibs() {
-	local var=$1 pfxlen=$2 value=$3 prefix='2#' pshift mask i
+	local var=$1 pfxlen=$2 value=$3 prefix='2#'
+	local -i pshift mask i
 
 	# Generate the utf8 prefix
 	for ((i=0; i<pfxlen; i++)); do
@@ -40,23 +41,24 @@ __utf8encode_getnibs() {
 # Params:
 #   var: String to encode
 utf8encode() {
-	local var=$1 res='' enc chr i plen bits tmp
+	local var=$1 res='' enc tmp
+	local -i i chr plen bits
 
 	for ((i=0; i<${#var}; i++)); do
-		printf -v chr '%i' "'${var:$i:1}"
+		printf -v chr '%i' "'${var:i:1}"
 		# Match codepoints range to avoid playing with the locale...
 		if ((chr >= 97 && chr <= 122)) ||  # [a-z]
 		   ((chr >= 65 && chr <= 90))  ||  # [A-Z]
 		   ((chr >= 48 && chr <= 57))  ||  # [0-9]
 		   ((chr == 46)); then             # .
-			res+="${var:$i:1}"
+			res+="${var:i:1}"
 		else
 			enc='_'
 			plen=0  # No prefix for 7-bit, else 2..4
 			bits=0  # Not counting the first nibble (so 0 for 7-bit)
 			if ((chr > __UTF8ENCODE_CP4_MAX)); then
 				echo >&2 "Invalid encoding" # possible?
-				break
+				return 1
 			elif ((chr > __UTF8ENCODE_CP3_MAX)); then
 				plen=4
 				bits=18  # not counting the first nibble
