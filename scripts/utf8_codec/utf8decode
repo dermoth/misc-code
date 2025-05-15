@@ -33,7 +33,7 @@ __utf8decode_checknib() {
 	fi
 }
 
-# Decode utf8-encoded string, write decoded value to $ret.
+# Decode utf8-encoded string, write decoded value to $retval.
 # Params:
 #   var: Value to decode
 utf8decode() {
@@ -85,7 +85,7 @@ utf8decode() {
 		fi
 		res+=$char
 	done
-	printf -v ret '%s' "$res"
+	printf -v retval '%s' "$res"
 }
 
 # test
@@ -93,5 +93,5 @@ utf8decode() {
 
 for arg in "$@"; do
 	utf8decode "$arg"
-	printf '%s\n' "$ret"
+	printf '%s\n' "$retval"
 done

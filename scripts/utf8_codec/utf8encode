@@ -37,7 +37,7 @@ __utf8encode_getnibs() {
 	printf -v "$var" '%02x' $((prefix | (value & mask)))
 }
 
-# Encode string to escaped utf8, write decoded value to $ret.
+# Encode string to escaped utf8, write decoded value to $retval.
 # Params:
 #   var: String to encode
 utf8encode() {
@@ -81,7 +81,7 @@ utf8encode() {
 			res+=$enc
 		fi
 	done
-	printf -v ret '%s' "$res"
+	printf -v retval '%s' "$res"
 }
 
 # test
@@ -89,5 +89,5 @@ utf8encode() {
 
 for arg in "$@"; do
 	utf8encode "$arg"
-	printf '%s\n' "$ret"
+	printf '%s\n' "$retval"
 done
