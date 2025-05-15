@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-# utf8decode - Given one or more underscore-encoded UTF-8 strings,
-#              return the underscore-encoded version (one per line).
+# utf8encode - Given one or more unicode strings, return the
+#              underscore-encoded version (one per line).
 #
 
 declare -i __UTF8ENCODE_CP1_MAX=16#00007F
