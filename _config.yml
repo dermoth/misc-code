@@ -5,10 +5,10 @@ minima:
   social_links:
     - title: Mastodon
       platform: mastodon
-      user_url: "https://jasette.facil.services/@dermoth"
+      url: "https://jasette.facil.services/@dermoth"
     - title: StackOverflow
       platform: stackoverflow
-      user_url: "https://stackoverflow.com/users/969196/thomas-guyot-sionnest"
+      url: "https://stackoverflow.com/users/969196/thomas-guyot-sionnest"
     - title: LinkedIn
       platform: linkedin
-      user_url: "https://www.linkedin.com/in/tguyot/"
+      url: "https://www.linkedin.com/in/tguyot/"
