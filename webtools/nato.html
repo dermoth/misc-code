@@ -17,7 +17,7 @@
     <meta name="theme-color" content="#eeeeee" media="(prefers-color-scheme: dark)">
     <script>
 function nato(c) {
-	var tbl = {
+	const tbl = {
 		'a': 'Alpha',   'b': 'Bravo',    'c': 'Charlie', 'd': 'Delta',
 		'e': 'Echo',    'f': 'Foxtrot',  'g': 'Golf',    'h': 'Hotel',
 		'i': 'India',   'j': 'Juliet',   'k': 'Kilo',    'l': 'Lima',
@@ -48,14 +48,14 @@ function str2nato(nmode = 'NFD') {
 	   letters from being translated. For more info on normalisation forms see:
 	   https://unicode.org/reports/tr15/
 	*/
-	var src = document.getElementById('src').value.normalize(nmode).replace(/[\u0300-\u036f]/g, '');
-	var dst = '';
-	var i;
+	const src = document.getElementById('src').value.normalize(nmode).replace(/[\u0300-\u036f]/g, '');
+	let dst = '';
+	let c;
 
 	// Convert to array to handle multiplanar unicode (those won't be converted
 	// but they will be copied as-is correctly)
-	var clist = [...src];
-	for (i = 0; i < clist.length; i++) {
+	const clist = [...src];
+	for (let i = 0; i < clist.length; i++) {
 		/* Counting the previous Nato word's a single space becomes 3; Turns out
 		   3 space makes a nice separation of word so don't skip spaces (commented)
 		if (clist[i] == ' ')
@@ -89,7 +89,7 @@ function str2nato(nmode = 'NFD') {
       <textarea class="form-control" rows="10" id="src" autofocus
                 onchange="str2nato(nmode='NFD')" onkeyup="str2nato()"></textarea>
       <p><button type="button" class="btn btn-primary"
-                 onclick="var d=document.getElementById('src'); d.value = ''; str2nato(); d.focus();">Clear</button>
+                 onclick="const d = document.getElementById('src'); d.value = ''; str2nato(); d.focus();">Clear</button>
       <p>NATO:<br>
       <textarea class="form-control" rows="20" id="nato" readonly></textarea>
     </div>
