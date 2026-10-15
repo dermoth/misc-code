@@ -286,6 +286,14 @@ function clearAll() {
 	fatalErr = false;
 }
 
+function parseNum(str) {
+	// Number() only accepts a sign on decimal literals
+	const m = str.match(/^([+-])(0[box].*)$/i);
+	if (!m)
+		return Number(str);
+	return m[1] === '-' ? -Number(m[2]) : Number(m[2]);
+}
+
 function calc() {
 	let input = getInput();
 	input.focus();
@@ -360,10 +368,11 @@ function calc() {
 					hlog('stacklen: ' + sLen);
 					break;
 				default:  // TODO: add copy, reset...paste?
-					if (isNaN(item)) {
+					const num = parseNum(item);
+					if (isNaN(num)) {
 						throw 'Unknown operator: ' + item;
 					}
-					push(Number(item));  // Normalize 0x/0b/0o/exponent to decimal
+					push(num);  // Normalize 0x/0b/0o/exponent to decimal
 					hlog('push: ' + item);
 			}
 		});
