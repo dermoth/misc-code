@@ -150,7 +150,15 @@ function cmdEval(command) {
 
 /* Calculator state; the DOM lists are rendered from it by render() */
 let stack = [];    // Values, top of the stack last
-let history = [];  // Log entries: { label, token } (token as typed)
+let history = [];  // Log entries: { label, token, line, stack }:
+                   // token as typed, input line number, stack after it
+let cursor = 0;    // Entries before it are applied, the rest were undone
+let lineNo = 0;    // Input line counter, groups history entries
+const undoStep = 'line';  // Undo/redo step size: 'line' (one Enter) or 'token'
+// Ctrl+Z/Ctrl+Y: 'shared' undoes the input text first and redoes it last,
+// 'calc' acts on the calculator only, 'off' leaves them to the browser
+const undoKeys = 'shared';
+let keyUndos = 0;  // Calculator undos done by Ctrl+Z, redone before the text
 
 function getStack() {
 	return document.getElementById('stack-list');
@@ -178,7 +186,15 @@ function newLi(value) {
 function render() {
 	// Stack is displayed top first
 	getStack().replaceChildren(...stack.map((v) => newLi(v)).reverse());
-	getHist().replaceChildren(...history.map((e) => newLi(e.label)));
+	// Undone entries (available to redo) are greyed out
+	getHist().replaceChildren(...history.map((e, i) => {
+		const item = newLi(e.label);
+		if (i >= cursor)
+			item.classList.add('text-muted');
+		return item;
+	}));
+	document.getElementById('undo-btn').disabled = cursor === 0;
+	document.getElementById('redo-btn').disabled = cursor === history.length;
 }
 
 function checkDepth(level) {
@@ -238,7 +254,85 @@ function roll() {
 }
 
 function hlog(label, token = null) {
-	history.push({ label, token });
+	history.push({ label, token, line: lineNo, stack: stack.slice() });
+}
+
+function restore() {
+	// Restore the stack as it was after the last applied history entry
+	stack = cursor ? history[cursor - 1].stack.slice() : [];
+	render();
+	showResult();
+	getInput().focus();
+}
+
+function undo() {
+	// Returns whether there was anything to undo
+	if (cursor === 0)
+		return false;
+	const line = history[cursor - 1].line;
+	cursor--;
+	if (undoStep === 'line')
+		while (cursor > 0 && history[cursor - 1].line === line)
+			cursor--;
+	restore();
+	return true;
+}
+
+function redo() {
+	// Returns whether there was anything to redo
+	if (cursor === history.length)
+		return false;
+	const line = history[cursor].line;
+	cursor++;
+	if (undoStep === 'line')
+		while (cursor < history.length && history[cursor].line === line)
+			cursor++;
+	restore();
+	return true;
+}
+
+function keyUndoRedo(isUndo) {
+	if (isUndo) {
+		if (undo())
+			keyUndos++;
+	} else if (redo())
+		keyUndos = Math.max(keyUndos - 1, 0);
+	else
+		keyUndos = 0;  // Nothing to redo: undone history was replaced
+}
+
+function shortcut(event) {
+	// Ctrl+Z undo, Ctrl+Y or Ctrl+Shift+Z redo (Cmd on macOS), see undoKeys
+	if (undoKeys === 'off')
+		return;
+	if (!(event.ctrlKey || event.metaKey) || event.altKey || event.isComposing)
+		return;
+	const key = event.key.toLowerCase();
+	const isUndo = key === 'z' && !event.shiftKey;
+	const isRedo = key === 'y' || (key === 'z' && event.shiftKey);
+	if (!isUndo && !isRedo)
+		return;
+
+	// Shared: undo the input text until it's empty, then the calculator; redo
+	// the calculator undos done that way first, then the text
+	const input = getInput();
+	const textFirst =
+		undoKeys === 'shared' &&
+		event.target === input &&
+		(isUndo ? input.value !== '' : keyUndos === 0 || cursor === history.length);
+	if (!textFirst) {
+		event.preventDefault();
+		keyUndoRedo(isUndo);
+		return;
+	}
+
+	// Let the browser undo/redo the text; if it had nothing left to do, act on
+	// the calculator instead
+	const before = input.value;
+	setTimeout(() => {
+		if (input.value === before)
+			keyUndoRedo(isUndo);
+	});
 }
 
 // Results functions
@@ -264,6 +358,8 @@ function clearAll() {
 	// Clear state...
 	stack = [];
 	history = [];
+	cursor = 0;
+	keyUndos = 0;
 	render();
 	// Clear inputs
 	getInput().value = '';
@@ -288,6 +384,18 @@ function calc() {
 	if (['clear', 'cl', 'reset', 'rst'].includes(input.value))
 		clearAll();
 
+	// undo/redo only make sense as a whole line
+	if (['undo', 'redo'].includes(input.value)) {
+		const cmd = input.value;
+		input.value = '';
+		showError('');
+		if (cmd === 'undo')
+			undo();
+		else
+			redo();
+		return;
+	}
+
 	if (input.value == '')
 		return;  // Blank input, do nothing
 
@@ -302,6 +410,11 @@ function calc() {
 	const line = input.value;
 	const tokens = line.matchAll(/[^ ,;]+/g);
 	let token;
+
+	// New input drops the undone entries (no redo past it), but keep them to
+	// put back if the line fails
+	const redoTail = history.splice(cursor);
+	lineNo++;
 
 	// A line is applied entirely or not at all: restore this state on error
 	const savedStack = stack.slice();
@@ -366,15 +479,21 @@ function calc() {
 			console.error(err);  // Not one of our errors: a bug
 		stack = savedStack;
 		history.length = savedHistLen;
+		history.push(...redoTail);
 		showError(err);
 		// Leave the line for editing, with the failing token selected
 		input.setSelectionRange(token.index, token.index + token[0].length);
 		return;
 	}
+	cursor = history.length;
+	keyUndos = 0;  // New line: nothing left to redo
 	input.value = '';
 	showError('');
 	render();
+	showResult();
+}
 
+function showResult() {
 	// Write result
 	let finalLen = stackLen();
 	if (finalLen == 1)
@@ -405,11 +524,17 @@ function inputCheck(event) {
               <input class="form-control" type="text" id="rpn-input" onkeydown="inputCheck(event);"/>
               <div class="invalid-feedback" id="rpn-error"></div>
             </div>
-            <p>
+            <div class="d-flex flex-wrap gap-1 mb-3">
               <button type="button" class="btn btn-primary" onclick="calc();">Enter</button>
+              <div class="btn-group">
+                <button type="button" class="btn btn-primary" id="undo-btn" onclick="undo();"
+                        title="Undo (Ctrl+Z)" aria-label="Undo">&#8630;</button>
+                <button type="button" class="btn btn-primary" id="redo-btn" onclick="redo();"
+                        title="Redo (Ctrl+Y)" aria-label="Redo">&#8631;</button>
+              </div>
               <button type="button" class="btn btn-primary" onclick="if (stackLen()) navigator.clipboard.writeText(String(peek(0)));">Copy Result</button>
               <button type="button" class="btn btn-primary" onclick="clearAll()">Clear</button>
-            </p>
+            </div>
             <h6>Result:</h6>
             <input class="form-control-lg" id="rpn-result" readonly/>
             <p/>
@@ -455,6 +580,7 @@ function inputCheck(event) {
         </div>
         <script type="text/javascript">
 clearAll();  // Sets focus
+document.addEventListener('keydown', shortcut);
 
 // Offline support for the installed app
 if ('serviceWorker' in navigator)
