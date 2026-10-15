@@ -1,0 +1,8 @@
+<!-- Source for rpn-*.png; content kept within the maskable safe zone -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <rect width="512" height="512" fill="#198754"/>
+  <g fill="#ffffff" text-anchor="middle" font-weight="bold">
+    <text x="256" y="265" font-size="150" font-family="DejaVu Sans, Arial, Helvetica, sans-serif">RPN</text>
+    <text x="256" y="345" font-size="60" font-family="DejaVu Sans Mono, Courier New, monospace">2 3 +</text>
+  </g>
+</svg>

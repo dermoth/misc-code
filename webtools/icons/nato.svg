@@ -1,0 +1,8 @@
+<!-- Source for nato-*.png; content kept within the maskable safe zone -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <rect width="512" height="512" fill="#0d6efd"/>
+  <g fill="#ffffff" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-weight="bold" text-anchor="middle">
+    <text x="256" y="290" font-size="220">A</text>
+    <text x="256" y="360" font-size="56" letter-spacing="4">ALPHA</text>
+  </g>
+</svg>
