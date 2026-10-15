@@ -148,13 +148,13 @@ function cmdEval(command) {
 	if (!fn)
 		throw 'Unimplemented: ' + realCmd;
 	push(fn(val));
-	hlog('op: ' + realCmd);
+	hlog('op: ' + realCmd, command);
 }
 
-// If we needed to iterate to process quickly rpn statements we'd be
-// better off with internal variables then update the dom at the end,
-// But this is meant mainly as an interactive tool so using dom as a
-// storage space...
+/* Calculator state; the DOM lists are rendered from it by render() */
+let stack = [];    // Values, top of the stack last
+let history = [];  // Log entries: { label, token } (token as typed)
+
 function getStack() {
 	return document.getElementById('stack-list');
 }
@@ -178,90 +178,70 @@ function newLi(value) {
 	return item;
 }
 
-function checkDepth(stack, level) {
+function render() {
+	// Stack is displayed top first
+	getStack().replaceChildren(...stack.map((v) => newLi(v)).reverse());
+	getHist().replaceChildren(...history.map((e) => newLi(e.label)));
+}
+
+function checkDepth(level) {
 	// Check if stack is deep enough
 	if (level < 0)
 		throw 'Stack index cannot be negative';
-	if (level < stack.childElementCount)
-		return true;
-	return false;
+	return level < stack.length;
 }
 
-function stackLen(stack = null) {
-	// Get stack length
-	if (!stack)
-		stack = getStack();
-	return stack.childElementCount;
+function stackLen() {
+	return stack.length;
 }
 
-function peek(level, stack = null) {
-	// Peek into stack at level
-	if (!stack)
-		stack = getStack();
-	if (!checkDepth(stack, level))
+function peek(level) {
+	// Peek into stack at level (0 is the top)
+	if (!checkDepth(level))
 		throw 'Cannot peek at level ' + level;
-	return stack.children[level];
+	return stack[stack.length - 1 - level];
 }
 
-function push(value, stack = null) {
-	// Push to stack
-	if (!stack)
-		stack = getStack();
-	stack.prepend(newLi(value));
+function push(value) {
+	stack.push(value);
 }
 
-function pop(stack = null) {
-	// pop from stack
-	if (!stack)
-		stack = getStack();
-	if (!checkDepth(stack, 0))
+function pop() {
+	if (!checkDepth(0))
 		throw 'Cannot pop: stack is empty';
-
-	let item = stack.children[0];
-	stack.removeChild(item);
-	return item.textContent;
+	return stack.pop();
 }
 
 function swap() {
 	// Swap topmost two elements of stack
-	let stack = getStack();
-	if (!checkDepth(stack, 1))
+	if (!checkDepth(1))
 		throw 'Cannot swap: stack has less than two items';
 
-	let top = stack.children[0].textContent;
-	stack.children[0].textContent = stack.children[1].textContent;
-	stack.children[1].textContent = top;
-	/* Or we could just pop and push twice...
-	let val1 = pop();
-	let val2 = pop();
-	push(val1);
-	push(val2); */
+	const n = stack.length;
+	[stack[n - 1], stack[n - 2]] = [stack[n - 2], stack[n - 1]];
 }
 
 function dup(level = 0) {
-	let stack = getStack();
-	if (!checkDepth(stack, 0))
+	if (!checkDepth(0))
 		throw 'Cannot dup: stack is empty';
 
-	let dupVal = peek(level, stack).textContent;
+	const dupVal = peek(level);
 	push(dupVal);
 	return dupVal;
 }
 
 function roll() {
-	let stack = getStack();
-	if (!checkDepth(stack, 0))
+	// Move the top element to the bottom
+	if (!checkDepth(0))
 		throw 'Cannot roll: stack is empty';
 
-	let top = stack.children[0];
-	stack.removeChild(top);
-	stack.append(top);
-	return top.textContent;
+	const top = stack.pop();
+	stack.unshift(top);
+	return top;
 }
 
-function hlog(value) {
-	let hist = getHist();
-	hist.append(newLi(value));
+function hlog(label, token = null) {
+	history.push({ label, token });
 }
 
 // Results functions
@@ -278,10 +258,10 @@ function noResult() {
 }
 
 function clearAll() {
-	// Clear stacks...
-	[getStack(), getHist()].forEach((elt) => {
-		elt.innerHTML = '';
-	});
+	// Clear state...
+	stack = [];
+	history = [];
+	render();
 	// Clear inputs
 	getInput().value = '';
 	getInput().focus();
@@ -344,31 +324,31 @@ function calc() {
 					for (let i = 0; i < count; i++)
 						sum += Number(pop());
 					push(sum);
-					hlog('sum: ' + count);
+					hlog('sum: ' + count, item);
 					break;
 				case 'exch':
 				case 'xfy':  // Alias
 				case 'swap':  // Alias
 					swap();
-					hlog('exch: ' + peek(1).textContent + '<=>' + peek(0).textContent);
+					hlog('exch: ' + peek(1) + '<=>' + peek(0), item);
 					break;
 				case 'pop':
 				case '=':  // Alias
-					hlog('pop: ' + pop());
+					hlog('pop: ' + pop(), item);
 					break;
 				case 'dup':
-					hlog('dup: ' + dup());
+					hlog('dup: ' + dup(), item);
 					break;
 				// Added by me, not in rpn manpage
 				case 'r':  // Rolls stack by one elt
 					//TODO - Move top elt to bottom
-					hlog('r: ' + roll() + ' => bottom of the stack');
+					hlog('r: ' + roll() + ' => bottom of the stack', item);
 					break;
 				case 'stacklen':  // Push stack length to stack
 				case 'sl': // Alias
 					let sLen = stackLen();
 					push(sLen);
-					hlog('stacklen: ' + sLen);
+					hlog('stacklen: ' + sLen, item);
 					break;
 				default:  // TODO: add copy, reset...paste?
 					const num = parseNum(item);
@@ -376,7 +356,7 @@ function calc() {
 						throw 'Unknown operator: ' + item;
 					}
 					push(num);  // Normalize 0x/0b/0o/exponent to decimal
-					hlog('push: ' + item);
+					hlog('push: ' + item, item);
 			}
 		});
 	} catch (err) {
@@ -386,15 +366,17 @@ function calc() {
 		input.value = 'clear';
 		push('ERR');
 		finalResult('ERR');
+		render();
 		throw err;
 	}
+	render();
 
 	// Write result
 	let finalLen = stackLen();
 	if (finalLen == 1)
-		finalResult(peek(0).textContent);
+		finalResult(peek(0));
 	else if (finalLen > 0)
-		partialResult(peek(0).textContent);
+		partialResult(peek(0));
 	//else if (/*TODO last command is =*/)
 	//	finalResult(/*TODO last popped value*/
 	else
@@ -418,7 +400,7 @@ function inputCheck(event) {
             <p><input class="form-control" type="text" id="rpn-input" onkeydown="inputCheck(event);"/></p>
             <p>
               <button type="button" class="btn btn-primary" onclick="calc();">Enter</button>
-              <button type="button" class="btn btn-primary" onclick="if (stackLen()) navigator.clipboard.writeText(peek(0).textContent);">Copy Result</button>
+              <button type="button" class="btn btn-primary" onclick="if (stackLen()) navigator.clipboard.writeText(String(peek(0)));">Copy Result</button>
               <button type="button" class="btn btn-primary" onclick="clearAll()">Clear</button>
             </p>
             <h6>Result:</h6>
