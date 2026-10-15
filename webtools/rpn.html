@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html>
-<head>
+  <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>RPN Calculator (BETA!)</title>
@@ -45,7 +45,7 @@ let cmdAlias = {
 	'vars': 'variables',
 	'V':    'variables',
 	'M':    'macros',
-}
+};
 
 /* Expression translator: For each command provides:
      1. The stack items required
@@ -126,23 +126,23 @@ let cmdExpr = {
 	'help':   [0, notImplemented], // Alias for h
 	'H':      [0, notImplemented], // `Long' help (one line per operator)
 	'Help':   [0, notImplemented], // Alias for H
-	'macros':  [0, notImplemented], /// List all macros
-	'variables':  [0, notImplemented],// List all variables
+	'macros':  [0, notImplemented], // List all macros
+	'variables':  [0, notImplemented], // List all variables
 	'debug':  [1, notImplemented],  // Set debug level to X; pop stack
-}
+};
 
 /* All commands */
 let allCmds = new Set(Object.keys(cmdExpr).concat(Object.keys(cmdAlias)));
 
 function cmdEval(command) {
-	let argCount, evalStr, val=[];
+	let argCount, evalStr, val = [];
 
 	let realCmd = cmdAlias[command];
 	if (!realCmd)
 		realCmd = command;
 	console.log(realCmd);
 	[argCount, evalStr] = cmdExpr[realCmd];
-	for (let i=0; i<argCount; i++)
+	for (let i = 0; i < argCount; i++)
 		val[i] = parseFloat(pop());
 	push(eval(evalStr));
 	hlog('op: ' + realCmd);
@@ -184,30 +184,30 @@ function checkDepth(stack, level) {
 	return false;
 }
 
-function stackLen(stack=null) {
+function stackLen(stack = null) {
 	// Get stack length
 	if (!stack)
 		stack = getStack();
 	return stack.childElementCount;
 }
 
-function peek(level, stack=null) {
+function peek(level, stack = null) {
 	// Peek into stack at level
 	if (!stack)
 		stack = getStack();
 	if (!checkDepth(stack, level))
 		throw 'Cannot peek at level ' + level;
-	return stack.children[level]
+	return stack.children[level];
 }
 
-function push(value, stack=null) {
+function push(value, stack = null) {
 	// Push to stack
 	if (!stack)
 		stack = getStack();
 	stack.prepend(newLi(value));
 }
 
-function pop(stack=null) {
+function pop(stack = null) {
 	// pop from stack
 	if (!stack)
 		stack = getStack();
@@ -221,7 +221,7 @@ function pop(stack=null) {
 
 function swap() {
 	// Swap topmost two elements of stack
-	let stack = getStack()
+	let stack = getStack();
 	if (!checkDepth(stack, 1))
 		throw 'Cannot swap: stack has less than two items';
 
@@ -235,8 +235,8 @@ function swap() {
 	push(val2); */
 }
 
-function dup(level=0) {
-	let stack = getStack()
+function dup(level = 0) {
+	let stack = getStack();
 	if (!checkDepth(stack, 0))
 		throw 'Cannot dup: stack is empty';
 
@@ -246,7 +246,7 @@ function dup(level=0) {
 }
 
 function roll() {
-	let stack = getStack()
+	let stack = getStack();
 	if (!checkDepth(stack, 0))
 		throw 'Cannot roll: stack is empty';
 
@@ -276,8 +276,7 @@ function noResult() {
 
 function clearAll() {
 	// Clear stacks...
-	[getStack(), getHist()]
-	.forEach(elt => {
+	[getStack(), getHist()].forEach((elt) => {
 		elt.innerHTML = '';
 	});
 	// Clear inputs
@@ -313,7 +312,7 @@ function calc() {
 	input.value = '';
 
 	try {
-		values.forEach(item => {
+		values.forEach((item) => {
 			/* If we have it, eval and execute directly */
 			if (allCmds.has(item)) {
 				cmdEval(item);  // Also handles logging
@@ -321,7 +320,7 @@ function calc() {
 			}
 
 			/* Other ops */
-			switch(item) {
+			switch (item) {
 				case '':  // Multiple spaces (usually from replace() above), ignore
 				case ',':
 				case ';':
@@ -331,7 +330,7 @@ function calc() {
 					// TODO: pop first them sum n elt
 					let count = pop();
 					let sum = 0;
-					for (let i=0; i<count; i++)
+					for (let i = 0; i < count; i++)
 						sum += parseFloat(pop());
 					push(sum);
 					hlog('sum: ' + count);
@@ -352,7 +351,7 @@ function calc() {
 				// Added by me, not in rpn manpage
 				case 'r':  // Rolls stack by one elt
 					//TODO - Move top elt to bottom
-					hlog('r: ' + roll() + ' => bottom of the stack')
+					hlog('r: ' + roll() + ' => bottom of the stack');
 					break;
 				case 'stacklen':  // Push stack length to stack
 				case 'sl': // Alias
@@ -372,7 +371,7 @@ function calc() {
 		fatalErr = true;
 		hlog('Fatal error: ' + err + '.');
 		hlog('Clear calculator to continue.');
-		input.value = 'clear'
+		input.value = 'clear';
 		push('ERR');
 		finalResult('ERR');
 		throw err;
@@ -398,65 +397,66 @@ function inputCheck(param) {
     </script>
   </head>
   <body>
-  <div class="min-vh-100 min-vw-100 position-fixed">
-  <div class="vh-100 w-75 container-fluid">
-    <h2 class="text-center mt-5">RPN Calculator</h2>
-    <div class="h-75 row align-items-end">
-      <div class="mh-100 col overflow-auto">
-        <h6>Please enter your input:</h6>
-        <p><input class="form-control" type="text" id="rpn-input" onkeypress="inputCheck(event);"/></p>
-        <p>
-          <button type="button" class="btn btn-primary" onclick="calc();">Enter</button>
-          <button type="button" class="btn btn-primary" onclick="navigator.clipboard.writeText(peek(0).textContent);">Copy Result</button>
-          <button type="button" class="btn btn-primary" onclick="clearAll()">Clear</button>
-        </p>
-        <h6>Result:</h6>
-          <input class="form-control-lg" id="rpn-result" readonly/>
-        <p/>
-        <h3>Instructions:</h3>
-        <p>
-          This is a <a href="https://www.google.com/search?q=Reverse+Polish+Notation&oq=Reverse+Polish+Notation&hl=en" target="Blank">Reverse Polish Notation</a>
-          calculator.<!-- You can aggregate multiple commands in a single input. Only numbers needs to be separated.-->
-        </p>
-        <h4>Supported syntax:</h4>
-    <p>Most of the operators documented in this <a href="https://www.ucolick.org/~will/RUE/rpn/rpn.1.html">RPN CLI tool</a> are avaible.
-    Variables haven't yet been implemented (should be easy, WIP), and macros will require slight refactoring to implement.
-    The <code>=</code> operator is actually an alias to pop (the stack is fully visible anyway). TODO: also put the value in the result box)</p>
-        <dl class="row">
-          <dt class="col-sm-3">Separators</dt>
-          <dt class="col-sm-9"><code>{ &lt;space&gt; | ; | , }</code>
-          <br>NB: <code>,</code> may be allowed as a decimal separator in the future, please avoid it!</dt>
-          <dt class="col-sm-3">Equal sign</dt>
-          <dt class="col-sm-9">The equal sign (<code>=</code>) is aliased to pop, useful to empty last stack value and start over.</dt>
-        </dl>
-      </div>
-      <div class="mh-100 col d-flex flex-column">
-        <div class="row align-items-end">
-          <div class="col"><p>Stack <b>&#129045;</b></p></div>
-        </div>
-        <div class="row align-items-end overflow-auto">
-          <div class="mh-100 col">
-            <ul class="list-group" id="stack-list">
-            </ul>
+    <div class="min-vh-100 min-vw-100 position-fixed">
+      <div class="vh-100 w-75 container-fluid">
+        <h2 class="text-center mt-5">RPN Calculator</h2>
+        <div class="h-75 row align-items-end">
+          <div class="mh-100 col overflow-auto">
+            <h6>Please enter your input:</h6>
+            <p><input class="form-control" type="text" id="rpn-input" onkeypress="inputCheck(event);"/></p>
+            <p>
+              <button type="button" class="btn btn-primary" onclick="calc();">Enter</button>
+              <button type="button" class="btn btn-primary" onclick="navigator.clipboard.writeText(peek(0).textContent);">Copy Result</button>
+              <button type="button" class="btn btn-primary" onclick="clearAll()">Clear</button>
+            </p>
+            <h6>Result:</h6>
+            <input class="form-control-lg" id="rpn-result" readonly/>
+            <p/>
+            <h3>Instructions:</h3>
+            <p>
+              This is a <a href="https://www.google.com/search?q=Reverse+Polish+Notation&oq=Reverse+Polish+Notation&hl=en" target="Blank">Reverse Polish Notation</a>
+              calculator.<!-- You can aggregate multiple commands in a single input. Only numbers needs to be separated.-->
+            </p>
+            <h4>Supported syntax:</h4>
+            <p>Most of the operators documented in this <a href="https://www.ucolick.org/~will/RUE/rpn/rpn.1.html">RPN CLI tool</a> are avaible.
+            Variables haven't yet been implemented (should be easy, WIP), and macros will require slight refactoring to implement.
+            The <code>=</code> operator is actually an alias to pop (the stack is fully visible anyway). TODO: also put the value in the result box)</p>
+            <dl class="row">
+              <dt class="col-sm-3">Separators</dt>
+              <dt class="col-sm-9"><code>{ &lt;space&gt; | ; | , }</code>
+              <br>NB: <code>,</code> may be allowed as a decimal separator in the future, please avoid it!</dt>
+              <dt class="col-sm-3">Equal sign</dt>
+              <dt class="col-sm-9">The equal sign (<code>=</code>) is aliased to pop, useful to empty last stack value and start over.</dt>
+            </dl>
+          </div>
+          <div class="mh-100 col d-flex flex-column">
+            <div class="row align-items-end">
+              <div class="col"><p>Stack <b>&#129045;</b></p></div>
+            </div>
+            <div class="row align-items-end overflow-auto">
+              <div class="mh-100 col">
+                <ul class="list-group" id="stack-list">
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="mh-100 col d-flex flex-column">
+            <div class="row align-items-end">
+              <div class="col"><p>History <b>&#129047;</b></p></div>
+            </div>
+            <div class="row align-items-end d-flex flex-column-reverse overflow-auto">
+              <div class="mh-100 col">
+                <ul class="list-group" id="hist-list">
+                </ul>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="mh-100 col d-flex flex-column">
-        <div class="row align-items-end">
-          <div class="col"><p>History <b>&#129047;</b></p></div>
-        </div>
-        <div class="row align-items-end d-flex flex-column-reverse overflow-auto">
-          <div class="mh-100 col">
-            <ul class="list-group" id="hist-list">
-            </ul>
-          </div>
-        </div>
-      </div>
-    </div>
-    <script type="text/javascript">
+        <script type="text/javascript">
 clearAll();  // Sets focus
-    </script>
+        </script>
+      </div>
     </div>
-</body>
+  </body>
 </html>
 <!-- vim:set filetype=html.javascript: -->

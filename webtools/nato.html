@@ -31,7 +31,7 @@ function nato(c) {
 	return tbl[c.toLowerCase()];
 }
 
-function str2nato(nmode='NFD') {
+function str2nato(nmode = 'NFD') {
 	switch (nmode) {
 		case 'NFC': break;
 		case 'NFD': break;
@@ -42,10 +42,11 @@ function str2nato(nmode='NFD') {
 			nmode = 'NFD';
 	}
 
-	/* Normalize to base letter + combining marks and remove marks; this effectively
-	   removes accents. Default is NFD, We could decompose even further using NFKD.
-	   The *C modes recompose characters and prevent base letters from being translated.
-	   For more info on normalisation forms see: https://unicode.org/reports/tr15/
+	/* Normalize to base letter + combining marks and remove marks; this
+	   effectively removes accents. Default is NFD, We could decompose even
+	   further using NFKD. The *C modes recompose characters and prevent base
+	   letters from being translated. For more info on normalisation forms see:
+	   https://unicode.org/reports/tr15/
 	*/
 	var src = document.getElementById('src').value.normalize(nmode).replace(/[\u0300-\u036f]/g, '');
 	var dst = '';
@@ -54,13 +55,14 @@ function str2nato(nmode='NFD') {
 	// Convert to array to handle multiplanar unicode (those won't be converted
 	// but they will be copied as-is correctly)
 	var clist = [...src];
-	for (i=0; i<clist.length; i++) {
+	for (i = 0; i < clist.length; i++) {
 		/* Counting the previous Nato word's a single space becomes 3; Turns out
 		   3 space makes a nice separation of word so don't skip spaces (commented)
 		if (clist[i] == ' ')
 			continue;  // Skip spaces, we already add them */
 
-		/* Multiplanar falls into last statement, but if we need it in the future...
+		/* Multiplanar falls into last statement, but if we need it in the
+		   future...
 		if (clist[i].length > 1)
 			dst += clist[i] + ' ';  // Multiplanar unicode.. (ex. emojis) */
 
@@ -77,17 +79,20 @@ function str2nato(nmode='NFD') {
   </head>
   <body>
     <div class="w-75 container-fluid">
-    <h3>NATO Phonetic Alphabet Speller</h3>
-    <!-- TODO: add unicode combination mode selector:
-         NFC: Do not decompose (accents and special chars primted as-is
-         NFD: Reversible decompose (ligatures and special character form retained_
-         NFKD: Decompose all characters
-    -->
-    <p>Enter text to be converted:<br>
-    <textarea class="form-control" rows="10" id="src" autofocus onchange="str2nato(nmode='NFD')" onkeyup="str2nato()"></textarea>
-    <p><button type="button" class="btn btn-primary" onclick="var d=document.getElementById('src'); d.value = ''; str2nato(); d.focus();">Clear</button>
-    <p>NATO:<br>
-    <textarea class="form-control" rows=20 id="nato" readonly></textarea>
+      <h3>NATO Phonetic Alphabet Speller</h3>
+      <!-- TODO: add unicode combination mode selector:
+           NFC: Do not decompose (accents and special chars primted as-is
+           NFD: Reversible decompose (ligatures and special character form retained_
+           NFKD: Decompose all characters
+      -->
+      <p>Enter text to be converted:<br>
+      <textarea class="form-control" rows="10" id="src" autofocus
+                onchange="str2nato(nmode='NFD')" onkeyup="str2nato()"></textarea>
+      <p><button type="button" class="btn btn-primary"
+                 onclick="var d=document.getElementById('src'); d.value = ''; str2nato(); d.focus();">Clear</button>
+      <p>NATO:<br>
+      <textarea class="form-control" rows="20" id="nato" readonly></textarea>
+    </div>
   </body>
 </html>
 <!-- vim:set filetype=html.javascript: -->
