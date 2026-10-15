@@ -69,7 +69,7 @@ let cmdExpr = {
 	'^':  [2, 'val[1] ^ val[0]'],
 	'>>': [2, 'val[1] >> val[0]'],
 	'<<': [2, 'val[1] << val[0]'],
-	'~':  [2, 'val[1] ~ val[0]'],
+	'~':  [1, '~val[0]'],  // Unary: bitwise complement
 	// Basic Unary
 	'chs': [1, 'val[0] * -1'],  // Change sign
 	'abs': [1, 'Math.abs(val[0])'],
@@ -79,7 +79,6 @@ let cmdExpr = {
 	'nint': [1, notImplemented],
 	'ceil': [1, 'Math.ceil(val[0])'],
 	'floor': [1, 'Math.floor(val[0])'],
-	'ceil': [1, 'Math.ceil(val[0])'],
 	'sqrt': [1, 'Math.sqrt(val[0])'],
 	'sqr': [1, 'val[0] * val[0]'],  // X squared
 	// Trigonometric
@@ -89,7 +88,7 @@ let cmdExpr = {
 	'asin':  [1, 'Math.asin(val[0])'],
 	'acos':  [1, 'Math.acos(val[0])'],
 	'atan':  [1, 'Math.atan(val[0])'],
-	'atan2': [1, 'Math.atan2(val[0])'],
+	'atan2': [2, 'Math.atan2(val[1], val[0])'],  // atan2(Y, X)
 	// Hyperbolic
 	'sinh':  [1, 'Math.sinh(val[0])'],
 	'cosh':  [1, 'Math.cosh(val[0])'],
