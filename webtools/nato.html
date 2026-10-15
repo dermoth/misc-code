@@ -48,13 +48,14 @@ function str2nato(nmode = 'NFD') {
 			nmode = 'NFD';
 	}
 
-	/* Normalize to base letter + combining marks and remove marks; this
+	/* Normalize to base letter + combining marks and remove marks (any
+	   Unicode Mark category, not just the U+0300-036F block); this
 	   effectively removes accents. Default is NFD, We could decompose even
 	   further using NFKD. The *C modes recompose characters and prevent base
 	   letters from being translated. For more info on normalisation forms see:
 	   https://unicode.org/reports/tr15/
 	*/
-	const src = document.getElementById('src').value.normalize(nmode).replace(/[\u0300-\u036f]/g, '');
+	const src = document.getElementById('src').value.normalize(nmode).replace(/\p{M}/gu, '');
 	let dst = '';
 	let c;
 
