@@ -143,7 +143,7 @@ function cmdEval(command) {
 		realCmd = command;
 	[argCount, evalStr] = cmdExpr[realCmd];
 	for (let i = 0; i < argCount; i++)
-		val[i] = parseFloat(pop());
+		val[i] = Number(pop());
 	push(eval(evalStr));
 	hlog('op: ' + realCmd);
 }
@@ -331,7 +331,7 @@ function calc() {
 					let count = pop();
 					let sum = 0;
 					for (let i = 0; i < count; i++)
-						sum += parseFloat(pop());
+						sum += Number(pop());
 					push(sum);
 					hlog('sum: ' + count);
 					break;
@@ -363,7 +363,7 @@ function calc() {
 					if (isNaN(item)) {
 						throw 'Unknown operator: ' + item;
 					}
-					push(item);
+					push(Number(item));  // Normalize 0x/0b/0o/exponent to decimal
 					hlog('push: ' + item);
 			}
 		});
