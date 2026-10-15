@@ -81,6 +81,10 @@ function str2nato(nmode = 'NFD') {
 	}
 	document.getElementById('nato').value = dst;
 }
+
+// Offline support for the installed app
+if ('serviceWorker' in navigator)
+	navigator.serviceWorker.register('sw.js');
     </script>
   </head>
   <body>

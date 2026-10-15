@@ -460,6 +460,10 @@ function inputCheck(param) {
         </div>
         <script type="text/javascript">
 clearAll();  // Sets focus
+
+// Offline support for the installed app
+if ('serviceWorker' in navigator)
+	navigator.serviceWorker.register('sw.js');
         </script>
       </div>
     </div>
