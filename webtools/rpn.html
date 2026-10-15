@@ -141,7 +141,6 @@ function cmdEval(command) {
 	let realCmd = cmdAlias[command];
 	if (!realCmd)
 		realCmd = command;
-	console.log(realCmd);
 	[argCount, evalStr] = cmdExpr[realCmd];
 	for (let i = 0; i < argCount; i++)
 		val[i] = parseFloat(pop());
@@ -390,9 +389,9 @@ function calc() {
 		noResult();
 }
 
-function inputCheck(param) {
+function inputCheck(event) {
 	// run calc() if input box received a return key
-	if (param.keyCode == 13)  // Return key
+	if (event.key === 'Enter' && !event.isComposing)
 		calc();
 }
     </script>
@@ -404,7 +403,7 @@ function inputCheck(param) {
         <div class="h-75 row align-items-end">
           <div class="mh-100 col overflow-auto">
             <h6>Please enter your input:</h6>
-            <p><input class="form-control" type="text" id="rpn-input" onkeypress="inputCheck(event);"/></p>
+            <p><input class="form-control" type="text" id="rpn-input" onkeydown="inputCheck(event);"/></p>
             <p>
               <button type="button" class="btn btn-primary" onclick="calc();">Enter</button>
               <button type="button" class="btn btn-primary" onclick="if (stackLen()) navigator.clipboard.writeText(peek(0).textContent);">Copy Result</button>
