@@ -354,8 +354,28 @@ function showError(msg) {
 	document.getElementById('rpn-error').textContent = msg;
 }
 
-function clearAll() {
-	// Clear state...
+function clearStack() {
+	// Clear button: same as typing "clear", without touching the input text
+	history.splice(cursor);
+	lineNo++;
+	stack = [];
+	hlog('clear', 'clear');
+	cursor = history.length;
+	keyUndos = 0;
+	render();
+	showResult();
+	getInput().focus();
+}
+
+function clearInput() {
+	// Clear the input text and its error, if any
+	getInput().value = '';
+	showError('');
+	getInput().focus();
+}
+
+function resetAll() {
+	// Reset state, including history (can't be undone)...
 	stack = [];
 	history = [];
 	cursor = 0;
@@ -380,9 +400,9 @@ function calc() {
 	let input = getInput();
 	input.focus();
 
-	// clear/reset the whole calculator
-	if (['clear', 'cl', 'reset', 'rst'].includes(input.value))
-		clearAll();
+	// reset the whole calculator
+	if (['reset', 'rst'].includes(input.value))
+		resetAll();
 
 	// undo/redo only make sense as a whole line
 	if (['undo', 'redo'].includes(input.value)) {
@@ -432,6 +452,11 @@ function calc() {
 
 			/* Other ops */
 			switch (item) {
+				case 'clear':  // Clear the stack (can be undone)
+				case 'cl':  // Alias
+					stack = [];
+					hlog('clear', item);
+					break;
 				case 'sum':
 					// TODO: pop first them sum n elt
 					let count = pop();
@@ -510,6 +535,8 @@ function inputCheck(event) {
 	// run calc() if input box received a return key
 	if (event.key === 'Enter' && !event.isComposing)
 		calc();
+	else if (event.key === 'Escape')
+		clearInput();
 }
     </script>
   </head>
@@ -520,8 +547,10 @@ function inputCheck(event) {
         <div class="h-75 row align-items-end">
           <div class="mh-100 col overflow-auto">
             <h6>Please enter your input:</h6>
-            <div class="mb-3">
+            <div class="input-group has-validation mb-3">
               <input class="form-control" type="text" id="rpn-input" onkeydown="inputCheck(event);"/>
+              <button type="button" class="btn btn-outline-secondary" onclick="clearInput();"
+                      title="Clear input (Esc)" aria-label="Clear input">&times;</button>
               <div class="invalid-feedback" id="rpn-error"></div>
             </div>
             <div class="d-flex flex-wrap gap-1 mb-3">
@@ -533,7 +562,10 @@ function inputCheck(event) {
                         title="Redo (Ctrl+Y)" aria-label="Redo">&#8631;</button>
               </div>
               <button type="button" class="btn btn-primary" onclick="if (stackLen()) navigator.clipboard.writeText(String(peek(0)));">Copy Result</button>
-              <button type="button" class="btn btn-primary" onclick="clearAll()">Clear</button>
+              <button type="button" class="btn btn-primary" onclick="clearStack();"
+                      title="Clear the stack (can be undone)">Clear</button>
+              <button type="button" class="btn btn-outline-danger" onclick="resetAll();"
+                      title="Reset stack and history (can't be undone)">Reset</button>
             </div>
             <h6>Result:</h6>
             <input class="form-control-lg" id="rpn-result" readonly/>
@@ -579,7 +611,7 @@ function inputCheck(event) {
           </div>
         </div>
         <script type="text/javascript">
-clearAll();  // Sets focus
+resetAll();  // Sets focus
 document.addEventListener('keydown', shortcut);
 
 // Offline support for the installed app
