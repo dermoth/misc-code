@@ -16,10 +16,10 @@ You will find the following top-level directories:
 - DDC: Script to adjust monitor's brightness using DDC control commands
 - nagios: Various Nagios plugins and eventhandlers
 - opstools: Some mail-related utilities for development and debugging
-- redmine: Mailhandler frontend for redming, supporting subaddresses
+- redmine: Mailhandler frontend for redmine, supporting subaddresses
 - scripts: Random scripts I wrote for fun, POCs or simple tasks
 - webtools: browser-side web tools (static html/javascript)
 
-## Nauthty Bots
+## Naughty Bots
 
 Don't [go here](http://www.guyot-sionnest.net/). Just don't.

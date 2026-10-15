@@ -37,7 +37,7 @@ let cmdAlias = {
 	'pow':  '**',  // Power of y**x
 	'mod':  '%',  // Modulo
 	'fmod': '%',  // Modulo
-	// Basix unary
+	// Basic unary
 	'invt': 'inv',  // 1/x
 	'int':  'aint', // Integral part
 	// Exp. and Log.
@@ -116,7 +116,7 @@ let cmdExpr = {
 	// Constants:
 	'pi': [0, 'Math.PI'],
 	'e':  [0, 'Math.E'],
-	// Display, Units: (Uninplemented):
+	// Display, Units: (Unimplemented):
 	'rad':   [0, notImplemented],  // Trig functions use/return radians
 	'deg':   [0, notImplemented],  // Trig functions use/return degrees
 	'sci':   [1, notImplemented],  // Print in sci format with precision=X; pop stack
@@ -124,7 +124,7 @@ let cmdExpr = {
 	'dec':   [1, notImplemented],  // Input integral values, print decimal format  // FIXME: pop?
 	'octal': [1, notImplemented],  // Input integral values, print octal format
 	'hex':   [1, notImplemented],  // Input integral values, print hexadecimal format
-	// Other: (Uninplemented):
+	// Other: (Unimplemented):
 	'p':      [0, notImplemented],  // Print the top element on the stack
 	/* I use = as an alias to pop, useful to start next calc on an empty stack
 	//'=':      [0, notImplemented],  // Print the entire stack */
@@ -154,7 +154,7 @@ function cmdEval(command) {
 	hlog('op: ' + realCmd);
 }
 
-// If we needed to iterate oot process quickly rpn statements we'd be
+// If we needed to iterate to process quickly rpn statements we'd be
 // better off with internal variables then update the dom at the end,
 // But this is meant mainly as an interactive tool so using dom as a
 // storage space...
@@ -182,7 +182,7 @@ function newLi(value) {
 }
 
 function checkDepth(stack, level) {
-	// Check if stack is deep eough
+	// Check if stack is deep enough
 	if (level < 0)
 		throw 'Stack index cannot be negative';
 	if (level < stack.childElementCount)
@@ -218,7 +218,7 @@ function pop(stack = null) {
 	if (!stack)
 		stack = getStack();
 	if (!checkDepth(stack, 0))
-		throw 'Cannon pop: stack is empty';
+		throw 'Cannot pop: stack is empty';
 
 	let item = stack.children[0];
 	stack.removeChild(item);
@@ -396,7 +396,7 @@ function calc() {
 }
 
 function inputCheck(param) {
-	// runc calc() if input box received a return key
+	// run calc() if input box received a return key
 	if (param.keyCode == 13)  // Return key
 		calc();
 }
@@ -424,7 +424,7 @@ function inputCheck(param) {
               calculator.<!-- You can aggregate multiple commands in a single input. Only numbers needs to be separated.-->
             </p>
             <h4>Supported syntax:</h4>
-            <p>Most of the operators documented in this <a href="https://www.ucolick.org/~will/RUE/rpn/rpn.1.html">RPN CLI tool</a> are avaible.
+            <p>Most of the operators documented in this <a href="https://www.ucolick.org/~will/RUE/rpn/rpn.1.html">RPN CLI tool</a> are available.
             Variables haven't yet been implemented (should be easy, WIP), and macros will require slight refactoring to implement.
             The <code>=</code> operator is actually an alias to pop (the stack is fully visible anyway). TODO: also put the value in the result box)</p>
             <dl class="row">
