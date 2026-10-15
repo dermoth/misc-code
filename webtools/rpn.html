@@ -23,9 +23,6 @@
     <meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
 
     <script type="text/javascript">
-/* Command stack and history */
-let fatalErr = false;  // requires reset
-
 /* Command aliases (See: https://www.ucolick.org/~will/RUE/rpn/rpn.1.html) */
 let cmdAlias = {
 	// Binary math
@@ -257,6 +254,12 @@ function noResult() {
 	getResult().value = 'Stack is empty!';
 }
 
+function showError(msg) {
+	// Show msg in red under the input box; an empty msg clears it
+	getInput().classList.toggle('is-invalid', msg !== '');
+	document.getElementById('rpn-error').textContent = msg;
+}
+
 function clearAll() {
 	// Clear state...
 	stack = [];
@@ -266,7 +269,7 @@ function clearAll() {
 	getInput().value = '';
 	getInput().focus();
 	getResult().value = '';
-	fatalErr = false;
+	showError('');
 }
 
 function parseNum(str) {
@@ -281,12 +284,9 @@ function calc() {
 	let input = getInput();
 	input.focus();
 
-	// clear/reset before error check
+	// clear/reset the whole calculator
 	if (['clear', 'cl', 'reset', 'rst'].includes(input.value))
 		clearAll();
-
-	if (fatalErr)
-		return;  // Anything else, ignore if error set
 
 	if (input.value == '')
 		return;  // Blank input, do nothing
@@ -297,26 +297,28 @@ function calc() {
 	// To match all operators (non-alpha 1-2 chars):
 	//let allOps = Array.from(allCmds).filter(elt => elt.search(/^[^A-Za-z]{1,2}$/) === 0)
 
-	// Split on space, comma and semicolon
-	let values = input.value.split(/[ ,;]+/);
-	// Consider input as accepted from here on and clear the field for the next entry
-	input.value = '';
+	// Tokens are separated by space, comma and semicolon (TODO: allow , as
+	// decimal separator?); keep their position to select the failing one
+	const line = input.value;
+	const tokens = line.matchAll(/[^ ,;]+/g);
+	let token;
+
+	// A line is applied entirely or not at all: restore this state on error
+	const savedStack = stack.slice();
+	const savedHistLen = history.length;
 
 	try {
-		values.forEach((item) => {
+		for (token of tokens) {
+			const item = token[0];
+
 			/* If we have it, execute directly */
 			if (allCmds.has(item)) {
 				cmdEval(item);  // Also handles logging
-				return;
+				continue;
 			}
 
 			/* Other ops */
 			switch (item) {
-				case '':  // Multiple spaces (usually from replace() above), ignore
-				case ',':
-				case ';':
-					// Treat as separator (ignore; TODO: allow , as decimal separator?)
-					break;
 				case 'sum':
 					// TODO: pop first them sum n elt
 					let count = pop();
@@ -358,17 +360,19 @@ function calc() {
 					push(num);  // Normalize 0x/0b/0o/exponent to decimal
 					hlog('push: ' + item, item);
 			}
-		});
+		}
 	} catch (err) {
-		fatalErr = true;
-		hlog('Fatal error: ' + err + '.');
-		hlog('Clear calculator to continue.');
-		input.value = 'clear';
-		push('ERR');
-		finalResult('ERR');
-		render();
-		throw err;
+		if (typeof err !== 'string')
+			console.error(err);  // Not one of our errors: a bug
+		stack = savedStack;
+		history.length = savedHistLen;
+		showError(err);
+		// Leave the line for editing, with the failing token selected
+		input.setSelectionRange(token.index, token.index + token[0].length);
+		return;
 	}
+	input.value = '';
+	showError('');
 	render();
 
 	// Write result
@@ -397,7 +401,10 @@ function inputCheck(event) {
         <div class="h-75 row align-items-end">
           <div class="mh-100 col overflow-auto">
             <h6>Please enter your input:</h6>
-            <p><input class="form-control" type="text" id="rpn-input" onkeydown="inputCheck(event);"/></p>
+            <div class="mb-3">
+              <input class="form-control" type="text" id="rpn-input" onkeydown="inputCheck(event);"/>
+              <div class="invalid-feedback" id="rpn-error"></div>
+            </div>
             <p>
               <button type="button" class="btn btn-primary" onclick="calc();">Enter</button>
               <button type="button" class="btn btn-primary" onclick="if (stackLen()) navigator.clipboard.writeText(String(peek(0)));">Copy Result</button>
