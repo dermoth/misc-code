@@ -407,7 +407,7 @@ function inputCheck(param) {
             <p><input class="form-control" type="text" id="rpn-input" onkeypress="inputCheck(event);"/></p>
             <p>
               <button type="button" class="btn btn-primary" onclick="calc();">Enter</button>
-              <button type="button" class="btn btn-primary" onclick="navigator.clipboard.writeText(peek(0).textContent);">Copy Result</button>
+              <button type="button" class="btn btn-primary" onclick="if (stackLen()) navigator.clipboard.writeText(peek(0).textContent);">Copy Result</button>
               <button type="button" class="btn btn-primary" onclick="clearAll()">Clear</button>
             </p>
             <h6>Result:</h6>
