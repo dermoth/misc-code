@@ -51,57 +51,58 @@ let cmdAlias = {
 
 /* Expression translator: For each command provides:
      1. The stack items required
-     2. The expression to evaluate
+     2. The function computing the result from the popped items:
+        val[0] is X (top of the stack), val[1] is Y
    See: https://www.ucolick.org/~will/RUE/rpn/rpn.1.html
 */
-let notImplemented = 'throw "Unimplemented: " + item';
+const notImplemented = null;  // cmdEval() throws "Unimplemented"
 let cmdExpr = {
 	// Binary math
-	'+':  [2, 'val[1] +  val[0]'],
-	'-':  [2, 'val[1] -  val[0]'],
-	'*':  [2, 'val[1] *  val[0]'],
-	'/':  [2, 'val[1] /  val[0]'],
-	'%':  [2, 'val[1] %  val[0]'],  // FIXME: js may have a different mod behavior than traditional RPN
-	'**': [2, 'Math.pow(val[1], val[0])'],
+	'+':  [2, (val) => val[1] +  val[0]],
+	'-':  [2, (val) => val[1] -  val[0]],
+	'*':  [2, (val) => val[1] *  val[0]],
+	'/':  [2, (val) => val[1] /  val[0]],
+	'%':  [2, (val) => val[1] %  val[0]],  // FIXME: js may have a different mod behavior than traditional RPN
+	'**': [2, (val) => Math.pow(val[1], val[0])],
 	// Binary bitwise
-	'|':  [2, 'val[1] | val[0]'],
-	'&':  [2, 'val[1] & val[0]'],
-	'^':  [2, 'val[1] ^ val[0]'],
-	'>>': [2, 'val[1] >> val[0]'],
-	'<<': [2, 'val[1] << val[0]'],
-	'~':  [1, '~val[0]'],  // Unary: bitwise complement
+	'|':  [2, (val) => val[1] | val[0]],
+	'&':  [2, (val) => val[1] & val[0]],
+	'^':  [2, (val) => val[1] ^ val[0]],
+	'>>': [2, (val) => val[1] >> val[0]],
+	'<<': [2, (val) => val[1] << val[0]],
+	'~':  [1, (val) => ~val[0]],  // Unary: bitwise complement
 	// Basic Unary
-	'chs': [1, 'val[0] * -1'],  // Change sign
-	'abs': [1, 'Math.abs(val[0])'],
-	'inv': [1, '1 / val[0]'],
+	'chs': [1, (val) => val[0] * -1],  // Change sign
+	'abs': [1, (val) => Math.abs(val[0])],
+	'inv': [1, (val) => 1 / val[0]],
 	'frac': [1, notImplemented],  // Fractional part... split on "." ?
 	'aint': [1, notImplemented],  // Integral part... split on "." ?
 	'nint': [1, notImplemented],
-	'ceil': [1, 'Math.ceil(val[0])'],
-	'floor': [1, 'Math.floor(val[0])'],
-	'sqrt': [1, 'Math.sqrt(val[0])'],
-	'sqr': [1, 'val[0] * val[0]'],  // X squared
+	'ceil': [1, (val) => Math.ceil(val[0])],
+	'floor': [1, (val) => Math.floor(val[0])],
+	'sqrt': [1, (val) => Math.sqrt(val[0])],
+	'sqr': [1, (val) => val[0] * val[0]],  // X squared
 	// Trigonometric
-	'sin':   [1, 'Math.sin(val[0])'],
-	'cos':   [1, 'Math.cos(val[0])'],
-	'tan':   [1, 'Math.tan(val[0])'],
-	'asin':  [1, 'Math.asin(val[0])'],
-	'acos':  [1, 'Math.acos(val[0])'],
-	'atan':  [1, 'Math.atan(val[0])'],
-	'atan2': [2, 'Math.atan2(val[1], val[0])'],  // atan2(Y, X)
+	'sin':   [1, (val) => Math.sin(val[0])],
+	'cos':   [1, (val) => Math.cos(val[0])],
+	'tan':   [1, (val) => Math.tan(val[0])],
+	'asin':  [1, (val) => Math.asin(val[0])],
+	'acos':  [1, (val) => Math.acos(val[0])],
+	'atan':  [1, (val) => Math.atan(val[0])],
+	'atan2': [2, (val) => Math.atan2(val[1], val[0])],  // atan2(Y, X)
 	// Hyperbolic
-	'sinh':  [1, 'Math.sinh(val[0])'],
-	'cosh':  [1, 'Math.cosh(val[0])'],
-	'tanh':  [1, 'Math.tanh(val[0])'],
-	'asinh': [1, 'Math.asinh(val[0])'],
-	'acosh': [1, 'Math.acosh(val[0])'],
-	'atanh': [1, 'Math.atanh(val[0])'],
+	'sinh':  [1, (val) => Math.sinh(val[0])],
+	'cosh':  [1, (val) => Math.cosh(val[0])],
+	'tanh':  [1, (val) => Math.tanh(val[0])],
+	'asinh': [1, (val) => Math.asinh(val[0])],
+	'acosh': [1, (val) => Math.acosh(val[0])],
+	'atanh': [1, (val) => Math.atanh(val[0])],
 	// Exp. and Log.
-	'exp':   [1, 'Math.exp(val[0])'],
-	'exp10': [1, '10 ** val[0]'],
-	'ln':    [1, 'Math.log(val[0])'],
-	'lg':    [1, 'Math.log2(val[0])'],
-	'log10': [1, 'Math.log10(val[0])'],
+	'exp':   [1, (val) => Math.exp(val[0])],
+	'exp10': [1, (val) => 10 ** val[0]],
+	'ln':    [1, (val) => Math.log(val[0])],
+	'lg':    [1, (val) => Math.log2(val[0])],
+	'log10': [1, (val) => Math.log10(val[0])],
 	//Conversions (Unimplemented)
 	'degrad': [1, notImplemented],
 	'raddeg': [1, notImplemented],
@@ -109,8 +110,8 @@ let cmdExpr = {
 	'hours': [1, notImplemented],
 	// Stack ops: Direct implementation in calc()
 	// Constants:
-	'pi': [0, 'Math.PI'],
-	'e':  [0, 'Math.E'],
+	'pi': [0, (val) => Math.PI],
+	'e':  [0, (val) => Math.E],
 	// Display, Units: (Unimplemented):
 	'rad':   [0, notImplemented],  // Trig functions use/return radians
 	'deg':   [0, notImplemented],  // Trig functions use/return degrees
@@ -136,15 +137,17 @@ let cmdExpr = {
 let allCmds = new Set(Object.keys(cmdExpr).concat(Object.keys(cmdAlias)));
 
 function cmdEval(command) {
-	let argCount, evalStr, val = [];
+	let argCount, fn, val = [];
 
 	let realCmd = cmdAlias[command];
 	if (!realCmd)
 		realCmd = command;
-	[argCount, evalStr] = cmdExpr[realCmd];
+	[argCount, fn] = cmdExpr[realCmd];
 	for (let i = 0; i < argCount; i++)
 		val[i] = Number(pop());
-	push(eval(evalStr));
+	if (!fn)
+		throw 'Unimplemented: ' + realCmd;
+	push(fn(val));
 	hlog('op: ' + realCmd);
 }
 
@@ -321,7 +324,7 @@ function calc() {
 
 	try {
 		values.forEach((item) => {
-			/* If we have it, eval and execute directly */
+			/* If we have it, execute directly */
 			if (allCmds.has(item)) {
 				cmdEval(item);  // Also handles logging
 				return;
