@@ -230,10 +230,11 @@ function newLi(value) {
 }
 
 function render() {
-	// Stack is displayed top first; entries beyond the peek are marked so small
-	// screens can hide them until expanded
+	// Stack is displayed top first, in bold; entries beyond the peek are marked
+	// so small screens can hide them until expanded
 	getStack().replaceChildren(...stack.map((v) => newLi(v)).reverse());
 	[...getStack().children].forEach((e, i) => {
+		e.classList.toggle('fw-bold', i === 0);
 		e.classList.toggle('rpn-extra', i >= stackPeek);
 	});
 	// History uses column-reverse to keep the newest entry in view, but only
