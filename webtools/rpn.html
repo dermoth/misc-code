@@ -336,16 +336,22 @@ function shortcut(event) {
 }
 
 // Results functions
+function setResult(value, note = '') {
+	// The note is shown next to the "Result:" label
+	getResult().value = value;
+	document.getElementById('rpn-result-note').textContent = note;
+}
+
 function partialResult(value) {
-	getResult().value = value + ' (Stack has remaining entries)';
+	setResult(value, '(' + (stackLen() - 1) + ' more on the stack)');
 }
 
 function finalResult(value) {
-	getResult().value = value;
+	setResult(value);
 }
 
 function noResult() {
-	getResult().value = 'Stack is empty!';
+	setResult('Stack is empty!');
 }
 
 function showError(msg) {
@@ -384,7 +390,7 @@ function resetAll() {
 	// Clear inputs
 	getInput().value = '';
 	getInput().focus();
-	getResult().value = '';
+	setResult('');
 	showError('');
 }
 
@@ -567,7 +573,7 @@ function inputCheck(event) {
               <button type="button" class="btn btn-outline-danger" onclick="resetAll();"
                       title="Reset stack and history (can't be undone)">Reset</button>
             </div>
-            <h6>Result:</h6>
+            <h6>Result: <small class="text-muted" id="rpn-result-note"></small></h6>
             <input class="form-control-lg" id="rpn-result" readonly/>
             <p/>
             <h3>Instructions:</h3>
