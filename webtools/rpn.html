@@ -22,6 +22,35 @@
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
 
+    <style>
+/* Desktop (lg and up): fixed full-viewport layout with three columns. These
+   replace Bootstrap utilities (position-fixed, vh-100, w-75...) that have no
+   responsive variants, with the same values. */
+@media (min-width: 992px) {
+  .rpn-viewport { position: fixed !important; min-height: 100vh !important; min-width: 100vw !important; }
+  .rpn-page { height: 100vh !important; width: 75% !important; }
+  .rpn-panes { height: 75% !important; }
+  .rpn-pane { max-height: 100% !important; }
+}
+/* Smaller screens: one column filling the screen height. History takes the
+   remaining space at the bottom, where the on-screen keyboard covers it
+   while typing. */
+@media (max-width: 991.98px) {
+  .rpn-page { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+  .rpn-panes { flex: 1; min-height: 0; flex-direction: column; flex-wrap: nowrap; }
+  .rpn-panes > .rpn-pane { flex: none; }
+  .rpn-panes > #hist-panel { flex: 1 1 0; min-height: 6rem; }
+  #hist-panel .rpn-scroll { flex: 1; min-height: 0; }
+  /* Content height (not capped by mh-100), so the list overflows the scroll
+     box itself and column-reverse keeps the newest entries in view */
+  #hist-panel .rpn-scroll > .col { flex: none; max-height: none !important; }
+  /* Tighter spacing to leave room for history */
+  .rpn-page h2 { font-size: 1.5rem; }
+  .rpn-panel p { margin-bottom: .25rem; }
+  #rpn-result { width: 100%; }
+}
+    </style>
+
     <script type="text/javascript">
 /* Command aliases (See: https://www.ucolick.org/~will/RUE/rpn/rpn.1.html) */
 let cmdAlias = {
@@ -186,6 +215,11 @@ function newLi(value) {
 function render() {
 	// Stack is displayed top first
 	getStack().replaceChildren(...stack.map((v) => newLi(v)).reverse());
+	// History uses column-reverse to keep the newest entry in view, but only
+	// at scrollTop 0. Boxes with a fractional height (small screens) can stop a
+	// pixel off after a manual scroll, so snap back if it was at the bottom.
+	const histScroll = getHist().closest('.overflow-auto');
+	const atNewest = histScroll.scrollTop > -2;
 	// Undone entries (available to redo) are greyed out
 	getHist().replaceChildren(...history.map((e, i) => {
 		const item = newLi(e.label);
@@ -193,6 +227,8 @@ function render() {
 			item.classList.add('text-muted');
 		return item;
 	}));
+	if (atNewest)
+		histScroll.scrollTop = 0;
 	document.getElementById('undo-btn').disabled = cursor === 0;
 	document.getElementById('redo-btn').disabled = cursor === history.length;
 }
@@ -547,11 +583,11 @@ function inputCheck(event) {
     </script>
   </head>
   <body>
-    <div class="min-vh-100 min-vw-100 position-fixed">
-      <div class="vh-100 w-75 container-fluid">
-        <h2 class="text-center mt-5">RPN Calculator</h2>
-        <div class="h-75 row align-items-end">
-          <div class="mh-100 col overflow-auto">
+    <div class="rpn-viewport">
+      <div class="rpn-page container-fluid">
+        <h2 class="text-center mt-2 mt-lg-5">RPN Calculator</h2>
+        <div class="rpn-panes row align-items-end">
+          <div class="rpn-pane col-12 col-lg overflow-auto">
             <h6>Please enter your input:</h6>
             <div class="input-group has-validation mb-3">
               <input class="form-control" type="text" id="rpn-input" onkeydown="inputCheck(event);"/>
@@ -608,22 +644,22 @@ function inputCheck(event) {
               <b>&times;</b> or <kbd>Esc</kbd> clears the input.</dd>
             </dl>
           </div>
-          <div class="mh-100 col d-flex flex-column">
+          <div class="rpn-pane rpn-panel col-12 col-lg d-flex flex-column">
             <div class="row align-items-end">
               <div class="col"><p>Stack <b>&#8593;</b></p></div>
             </div>
-            <div class="row align-items-end overflow-auto">
+            <div class="rpn-scroll row align-items-end overflow-auto">
               <div class="mh-100 col">
                 <ul class="list-group" id="stack-list">
                 </ul>
               </div>
             </div>
           </div>
-          <div class="mh-100 col d-flex flex-column">
+          <div class="rpn-pane rpn-panel col-12 col-lg d-flex flex-column" id="hist-panel">
             <div class="row align-items-end">
               <div class="col"><p>History <b>&#8595;</b></p></div>
             </div>
-            <div class="row align-items-end d-flex flex-column-reverse overflow-auto">
+            <div class="rpn-scroll row align-items-end d-flex flex-column-reverse overflow-auto">
               <div class="mh-100 col">
                 <ul class="list-group" id="hist-list">
                 </ul>
