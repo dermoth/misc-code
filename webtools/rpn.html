@@ -639,9 +639,10 @@ function inputCheck(event) {
         </h2>
         <div class="rpn-panes row align-items-end">
           <div class="rpn-pane col-12 col-lg overflow-auto">
-            <h6>Please enter your input:</h6>
+            <h6 class="d-none d-lg-block">Please enter your input:</h6>
             <div class="input-group has-validation mb-3">
-              <input class="form-control" type="text" id="rpn-input" onkeydown="inputCheck(event);"/>
+              <input class="form-control" type="text" id="rpn-input" onkeydown="inputCheck(event);" placeholder="e.g. 2 3 +"
+                     autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false"/>
               <button type="button" class="btn btn-outline-secondary" onclick="clearInput();"
                       title="Clear input (Esc)" aria-label="Clear input">&times;</button>
               <div class="invalid-feedback" id="rpn-error"></div>
