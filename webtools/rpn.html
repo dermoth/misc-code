@@ -645,7 +645,7 @@ function inputCheck(event) {
                 <button type="button" class="btn btn-primary" id="redo-btn" onclick="redo();"
                         title="Redo (Ctrl+Y)" aria-label="Redo">&#8631;</button>
               </div>
-              <button type="button" class="btn btn-primary" onclick="if (stackLen()) navigator.clipboard.writeText(String(peek(0)));">Copy Result</button>
+              <button type="button" class="btn btn-primary" onclick="if (getResult().value) navigator.clipboard.writeText(getResult().value);">Copy Result</button>
               <button type="button" class="btn btn-primary" onclick="clearStack();"
                       title="Clear the stack (can be undone)">Clear</button>
               <button type="button" class="btn btn-outline-danger" onclick="resetAll();"
