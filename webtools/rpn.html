@@ -426,18 +426,6 @@ function setResult(value, note = '') {
 	document.getElementById('rpn-result-note').textContent = note;
 }
 
-function partialResult(value) {
-	setResult(value, '(' + (stackLen() - 1) + ' more on the stack)');
-}
-
-function finalResult(value) {
-	setResult(value);
-}
-
-function noResult() {
-	setResult('Stack is empty!');
-}
-
 function showError(msg) {
 	// Show msg in red under the input box; an empty msg clears it
 	getInput().classList.toggle('is-invalid', msg !== '');
@@ -609,16 +597,19 @@ function calc() {
 }
 
 function showResult() {
-	// Write result
-	let finalLen = stackLen();
-	if (finalLen == 1)
-		finalResult(peek(0));
-	else if (finalLen > 0)
-		partialResult(peek(0));
-	//else if (/*TODO last command is =*/)
-	//	finalResult(/*TODO last popped value*/
+	// The result is the top of the stack, like the X register of RPN
+	// calculators. When a pop (or =) emptied the stack, it's the popped value
+	// instead, so "2 3 + =" shows the answer and leaves an empty stack.
+	const len = stackLen();
+	const last = history[cursor - 1];
+	if (len > 1)
+		setResult(peek(0), '(' + (len - 1) + ' more on the stack)');
+	else if (len === 1)
+		setResult(peek(0));
+	else if (last && ['pop', '='].includes(last.token))
+		setResult(history[cursor - 2].stack.at(-1), '(popped, stack is empty)');
 	else
-		noResult();
+		setResult('', '(stack is empty)');
 }
 
 function inputCheck(event) {
@@ -673,13 +664,14 @@ function inputCheck(event) {
               <h4>Supported syntax:</h4>
               <p>Most of the operators documented in this <a href="https://www.ucolick.org/~will/RUE/rpn/rpn.1.html">RPN CLI tool</a> are available.
               Variables haven't yet been implemented (should be easy, WIP), and macros will require slight refactoring to implement.
-              The <code>=</code> operator is actually an alias to pop (the stack is fully visible anyway). TODO: also put the value in the result box)</p>
+              The <code>=</code> operator is an alias to pop (the stack is fully visible anyway).</p>
               <dl class="row">
                 <dt class="col-sm-4">Separators</dt>
                 <dd class="col-sm-8"><code>{ &lt;space&gt; | ; | , }</code>
                 <br>NB: <code>,</code> may be allowed as a decimal separator in the future, please avoid it!</dd>
                 <dt class="col-sm-4">Equal sign</dt>
-                <dd class="col-sm-8">The equal sign (<code>=</code>) is aliased to pop, useful to empty last stack value and start over.</dd>
+                <dd class="col-sm-8">The equal sign (<code>=</code>) is aliased to pop: <code>2 3 + =</code> leaves the answer in
+                the result box and an empty stack to start over.</dd>
                 <dt class="col-sm-4">Numbers</dt>
                 <dd class="col-sm-8">Decimal (<code>1.5</code>, <code>1e3</code>), or hexadecimal, binary and octal integers
                 (<code>0x1f</code>, <code>0b101</code>, <code>0o17</code>), optionally signed.</dd>
