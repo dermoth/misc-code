@@ -98,6 +98,7 @@ if ('serviceWorker' in navigator)
       -->
       <p>Enter text to be converted:<br>
       <textarea class="form-control" rows="10" id="src" autofocus
+                autocapitalize="off" autocorrect="off" spellcheck="false"
                 oninput="str2nato()"></textarea>
       <p><button type="button" class="btn btn-primary"
                  onclick="const d = document.getElementById('src'); d.value = ''; str2nato(); d.focus();">Clear</button>
