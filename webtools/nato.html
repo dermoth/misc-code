@@ -21,6 +21,19 @@
     <!-- Optional Meta Theme Color is also supported on Safari and Chrome -->
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
+
+    <style>
+/* Smaller screens: one column filling the screen height, with a short input
+   and the output right under it, so it stays above the on-screen keyboard */
+@media (max-width: 991.98px) {
+  .nato-page { display: flex; flex-direction: column; height: 100vh; height: 100dvh; padding-top: .5rem; }
+  .nato-page h3 { font-size: 1.25rem; }
+  .nato-page p { margin-bottom: .5rem; }
+  #src { height: 5.5rem; padding-right: 2.25rem; }
+  .nato-out { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #nato { flex: 1; min-height: 3rem; }
+}
+    </style>
     <script>
 function nato(c) {
 	const tbl = {
@@ -83,13 +96,20 @@ function str2nato(nmode = 'NFD') {
 	document.getElementById('nato').value = dst;
 }
 
+function clearSrc() {
+	const d = document.getElementById('src');
+	d.value = '';
+	str2nato();
+	d.focus();
+}
+
 // Offline support for the installed app
 if ('serviceWorker' in navigator)
 	navigator.serviceWorker.register('sw.js');
     </script>
   </head>
   <body>
-    <div class="container-fluid col-lg-9">
+    <div class="nato-page container-fluid col-lg-9">
       <h3>NATO Phonetic Alphabet Speller</h3>
       <!-- TODO: add unicode combination mode selector:
            NFC: Do not decompose (accents and special chars printed as-is)
@@ -97,12 +117,15 @@ if ('serviceWorker' in navigator)
            NFKD: Decompose all characters
       -->
       <p>Enter text to be converted:<br>
-      <textarea class="form-control" rows="10" id="src" autofocus
-                autocapitalize="off" autocorrect="off" spellcheck="false"
-                oninput="str2nato()"></textarea>
-      <p><button type="button" class="btn btn-primary"
-                 onclick="const d = document.getElementById('src'); d.value = ''; str2nato(); d.focus();">Clear</button>
-      <p>NATO:<br>
+      <span class="d-block position-relative">
+        <textarea class="form-control" rows="10" id="src" autofocus
+                  autocapitalize="off" autocorrect="off" spellcheck="false"
+                  oninput="str2nato()"></textarea>
+        <button type="button" class="btn-close position-absolute top-0 end-0 m-2 d-lg-none"
+                onclick="clearSrc();" title="Clear" aria-label="Clear"></button>
+      </span>
+      <p class="d-none d-lg-block"><button type="button" class="btn btn-primary" onclick="clearSrc();">Clear</button>
+      <p class="nato-out">NATO:<br>
       <textarea class="form-control" rows="20" id="nato" readonly></textarea>
     </div>
   </body>
