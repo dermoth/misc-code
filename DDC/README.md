@@ -4,9 +4,10 @@ Tool to control monitors using **Display Data Channel** (DDC).
 
 ## Abstract
 
-This tool started from a need to control my monitors using DDC; Since switching
-to dark theme, I often get discomfort from any page/presentation/online meeting
-using a white background, and needed a quick way to control the backlight.
+This tool started from a need to control my monitors using DDC; Since
+switching to dark theme, I often get discomfort from any
+page/presentation/online meeting using a white background, and needed a quick
+way to control the backlight.
 
 This a a WIP and many changes are likely coming in the near future. I'm
 committing this version so I can start breaking stuff...
