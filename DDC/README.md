@@ -36,7 +36,17 @@ The last argument to printf is the script location, review as needed.
 
 ## `ddctool.sh`
 
-TODO - usage may change significantly
+[`ddctool.sh`](ddctool.sh) shows or sets the brightness of all connected
+monitors at once, using `ddcutil` on each display's I2C bus. Run it as root:
+
+```sh
+ddctool.sh       # Show the brightness of each display
+ddctool.sh 30    # Set the brightness of every display to 30 (0-100)
+```
+
+WARNING: Usage may change significantly as more commands are added.
+
+The source repo is on GitHub: <https://github.com/dermoth/misc-code>
 
 ## TODO
 
