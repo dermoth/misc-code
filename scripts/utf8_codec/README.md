@@ -1,10 +1,10 @@
-# UTF8 Codecs
+# UTF-8 Codecs
 
-These scripts are a POC to encode and decode Unicode using underscore-
-encoded (`_`) UTF-8 hex values.
+These scripts are a POC to encode and decode Unicode using underscore-encoded
+(`_`) UTF-8 hex values.
 
-The encoded values can be 1-4 hex nibbles long (2-8 hex chars in
-2-character increments). The length is determined by the UTF-8 standard.
+The encoded values can be 1–4 bytes long (2–8 hex characters in 2-character
+increments). The length is determined by the UTF-8 standard.
 
 ## Scripts
 
@@ -14,7 +14,7 @@ The encoded values can be 1-4 hex nibbles long (2-8 hex chars in
 * [`utf8decode`](utf8decode): decodes each argument back to UTF-8 and prints
   it on its own line.
 
-```sh
+```console
 $ utf8encode '_foo⁽™⁾bar🐍'
 _5ffoo_e281bd_e284a2_e281bebar_f09f908d
 $ utf8decode _5ffoo_e281bd_e284a2_e281bebar_f09f908d
@@ -25,4 +25,4 @@ The source repo is on GitHub: <https://github.com/dermoth/misc-code>
 
 ## References
 
-[en.wikipedia.org/wiki/UTF-8](https://en.wikipedia.org/wiki/UTF-8)
+[UTF-8 on Wikipedia](https://en.wikipedia.org/wiki/UTF-8)
