@@ -48,6 +48,19 @@ connectivity is only used to pick up new versions of the apps.
 5. On the _Add to Home Screen_ dialog, ensure the _Open as Web App_ option is
    enabled (it should be on by default) and tap _Add_
 
+## Usage Tracking
+
+Each app load, which is also when the app checks for a new version, is counted
+on [hitscounter.dev](https://hitscounter.dev/), with a separate counter per
+app. Loads are only counted once the app's service worker is installed, so the
+very first visit isn't. The request carries no cookies or identifiers, but
+like any web request it shows your IP address to that service.
+
+Historical data:
+
+* [NATO Phonetic Alphabet Speller](https://hitscounter.dev/history?url=https%3A%2F%2Fdermoth.github.io%2Fmisc-code%2Fwebtools%2Fnato.html)
+* [RPN Calculator](https://hitscounter.dev/history?url=https%3A%2F%2Fdermoth.github.io%2Fmisc-code%2Fwebtools%2Frpn.html)
+
 ## Naughty Bots
 
 Don't [go here](http://www.guyot-sionnest.net/). Just don't.
